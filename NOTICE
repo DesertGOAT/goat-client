@@ -1,0 +1,35 @@
+goat-client
+Copyright 2026 dlf-dds
+
+Licensed under the Apache License, Version 2.0 (the "License");
+see LICENSE for the full text.
+
+This product includes software derived from netbird
+(https://github.com/netbirdio/netbird), licensed under the BSD 3-Clause
+License (see LICENSE.netbird-bsd3 for the full text). Specifically, the
+following packages were forked from upstream netbird and adapted:
+
+  - client/iface/      WireGuard interface management (per-platform)
+  - client/internal/dns/  Per-OS DNS configuration (systemd-resolved, scutil, NRPT, NEDNSSettings)
+  - client/ios/        iOS gomobile facade (NetworkExtension bridge)
+  - client/android/    Android gomobile facade (VpnService bridge)
+  - client/ui/         Fyne desktop GUI (heavily reshaped — login flow stripped, bundle-import added)
+  - client/grpc/       gRPC dialer (carries the embed-CA + ServerName-port-strip patch from goat fork)
+  - client/proto/      gRPC daemon IPC (reshaped — mesh RPCs stripped)
+
+Upstream netbird repo:    https://github.com/netbirdio/netbird
+Upstream commit pinned:   3fc5a8d4a1fe308ff1068764a09b90b0859ab8fe
+Local goat-fork branch:   github.com/dfarrel1/netbird @ 32d04da19
+                          (one-commit ahead with embed-CA + ServerName port-strip)
+Fork date:                2026-05-09
+
+Stripped from upstream (NOT in this repo):
+  - client/internal/auth/      (OAuth / SSO / device-flow — replaced by bundle import)
+  - client/internal/management/ (netbird mgmt-API client — N/A; we use offline-CA bundle)
+  - client/internal/signal/    (netbird signal-server client — N/A; wg-cp0 is single-peer)
+  - client/internal/peer/      (mesh peer mgmt — N/A)
+  - client/internal/relay/     (netbird relay client — N/A)
+  - client/ssh/                (embedded SSH server — out of scope)
+  - client/firewall/ ACL pieces (mesh-specific — kept platform detection only)
+
+For per-file change details, see the git history under client/.
