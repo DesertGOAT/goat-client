@@ -1,0 +1,34 @@
+# Pinned offline-CA root public keys (Ed25519) compiled into goat-client.
+#
+# Authoritative source: goat-trunk (DesertBreadBird) repo at
+# ops/enrollment/public-keys/. This file mirrors the entries the binary
+# should accept; refresh it whenever the offline-CA team publishes a new
+# root or rotates an existing one.
+#
+# Regenerate embedded.go after every edit:
+#   go generate ./internal/trustanchor
+#   # or
+#   go run ./cmd/anchorgen -in internal/trustanchor/anchors.yaml -out internal/trustanchor/embedded.go
+#
+# Schema:
+#   anchors:
+#     - name:           short label, used in audit logs (must be unique)
+#       issuer:         CA-id string the offline-CA stamps into bundle.CAID
+#       valid_from:     RFC3339 UTC; before this, Verify ignores the anchor
+#       valid_until:    RFC3339 UTC; after this, Verify ignores the anchor
+#       public_key_pem: PKIX SubjectPublicKeyInfo PEM (BEGIN PUBLIC KEY)
+#                       must encode an Ed25519 key
+#
+# Multi-anchor rotation: list both old and new anchors with overlapping
+# windows during the rotation. After the cutover date, drop the old
+# anchor and re-run anchorgen.
+
+anchors:
+  - name: dev-desertbread-ca-2026-04-20
+    issuer: dev-desertbread-ca-2026-04-20
+    valid_from: 2026-04-20T00:00:00Z
+    valid_until: 2027-04-20T00:00:00Z
+    public_key_pem: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEAtSpG+sXfUp5ghqQ75bD4ljIvwclPQ0ATdYIDbNnRjCU=
+      -----END PUBLIC KEY-----
