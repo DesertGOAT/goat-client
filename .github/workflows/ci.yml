@@ -32,6 +32,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install Fyne build dependencies (CGO/OpenGL/X11)
+        # The cmd/goat-client Fyne GUI imports github.com/go-gl/gl +
+        # github.com/go-gl/glfw, both of which need CGO + Mesa GL +
+        # X11 dev headers at compile time. Without these the
+        # `go vet ./...` / `go build ./...` steps fail with
+        # `pkg-config: gl not found` and `X11/Xlib.h: No such file`.
+        # This matches the standard Fyne dep list documented at
+        # https://docs.fyne.io/started/. Daemon-side code is CGO-free
+        # (Track A spec), but PR-gating CI compiles the whole module.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev xorg-dev libxkbcommon-dev pkg-config
       - name: go vet
         run: go vet ./...
       - name: go test
