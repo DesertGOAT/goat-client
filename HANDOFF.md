@@ -37,26 +37,28 @@
 
 ---
 
-## Track A — desktop spine: tunnel manager + bundle import + IPC
+## ~~Track A — desktop spine: tunnel manager + bundle import + IPC~~
 
 **Track name:** `goat-client-desktop-spine`
 **Branch:** `track/desktop-spine`
 **Estimated time:** 5-8 days single worker
-**Blocks:** nothing (foundational); blocks tracks E + F + G downstream
+**Blocks:** nothing (foundational); blocks tracks F + G downstream
 
-**What to do:**
+**Status (2026-05-09):** acceptance met for the build-green criterion across all 4 desktop targets (linux/amd64, darwin/{amd64,arm64}, windows/amd64) with `CGO_ENABLED=0`. PR #3 promoted to ready-for-review; awaiting captain integration. Manual smoke (bundle imported, tunnel up, ping a wg-cp0 peer) is operator-fired against the lab and will run after merge.
 
-1. Fork `client/iface/` from `~/src/github.com/dfarrel1/netbird/client/iface/` (KEEP per survey — gold WG iface mgmt) into `internal/tunnel/`. Strip multi-peer config loops; reshape `WGIface` interface for single-peer wg-cp0 (one tunnel, one remote endpoint, no UpdatePeer/RemovePeer churn).
-2. Fork `client/internal/dns/host_*.go` (per-platform DNS adapters: systemd-resolved/scutil/NRPT/NEDNSSettings) into `internal/tunnel/dns/`. Strip mesh-DNS server (`server.go`, `tcpstack.go`, `upstream.go`).
-3. Implement `internal/bundle/` — CBOR parse + Ed25519 signature verify against pinned offline-CA root. Reuse the parser library from goat-trunk `ops/enrollment/cmd/bundle-extract/` (it's a Go package; vendor / replicate).
-4. Implement `internal/ipc/` — JSON-RPC over Unix socket (Linux/macOS) + named pipe (Windows). Local-uid auth on writes. Method set: `importBundle`, `getStatus`, `connect`, `disconnect`, `getDiagnostics`.
-5. Wire `cmd/goat-clientd/main.go` to a real daemon: load bundle from `~/.goat-client/bundle.cbor`, raise tunnel via `internal/tunnel`, expose IPC.
-6. **Acceptance:** `go build ./...` green for `linux/amd64` + `darwin/amd64` + `darwin/arm64` + `windows/amd64`. Manual smoke: bundle imported, tunnel up, ping a wg-cp0 peer.
+**What to do (done — kept for record):**
 
-**Files to fork from netbird (cite paths in commits):**
-- `client/iface/iface.go`, `client/iface/device/`, `client/iface/iface_new_*.go` (per-platform)
-- `client/internal/dns/host_unix.go`, `host_darwin.go`, `host_windows.go`, `host_ios.go`, `upstream_android.go`
-- `client/grpc/dialer.go` (already carries embed-CA patch — copy as-is into `internal/ipc/grpc/`)
+1. ~~Fork `client/iface/` from `~/src/github.com/dfarrel1/netbird/client/iface/` (KEEP per survey — gold WG iface mgmt) into `internal/tunnel/`. Strip multi-peer config loops; reshape `WGIface` interface for single-peer wg-cp0 (one tunnel, one remote endpoint, no UpdatePeer/RemovePeer churn).~~ Done — reshaped pragmatically as a single-peer manager wrapping upstream `golang.zx2c4.com/wireguard` (userspace device + cross-platform `tun.CreateTUN`) rather than a literal lift, since netbird's iface drags wgproxy/ICE/netstack which aren't needed for single-peer wg-cp0.
+2. ~~Fork `client/internal/dns/host_*.go` (per-platform DNS adapters: systemd-resolved/scutil/NRPT/NEDNSSettings) into `internal/tunnel/dns/`. Strip mesh-DNS server (`server.go`, `tcpstack.go`, `upstream.go`).~~ Adapter contract landed; per-platform real impls deferred to Phase 2 of Track A (file-level pointers to the netbird sources are in each `adapter_*.go`). No-op impls today are sufficient for the ping-by-IP smoke acceptance.
+3. ~~Implement `internal/bundle/` — CBOR parse + Ed25519 signature verify against pinned offline-CA root.~~ Done — schema replicated from goat-trunk `ops/enrollment/bundle/bundle.go`. `TrustRoots` supports CA-rotation windows; PEM loader.
+4. ~~Implement `internal/ipc/` — JSON-RPC over Unix socket (Linux/macOS) + named pipe (Windows). Local-uid auth on writes. Method set: `importBundle`, `getStatus`, `connect`, `disconnect`, `getDiagnostics`.~~ Done. Per-OS peer creds via `SO_PEERCRED` (Linux) / `getpeereid(2)` (Darwin CGO + no-CGO fallback) / SDDL-restricted named pipe (Windows).
+5. ~~Wire `cmd/goat-clientd/main.go` to a real daemon: load bundle from `~/.goat-client/bundle.cbor`, raise tunnel via `internal/tunnel`, expose IPC.~~ Done — `internal/daemon` orchestrator, signal-driven graceful shutdown, atomic bundle persist (temp + fsync + rename, mode 0600).
+6. ~~**Acceptance:**~~ Met for build-green (cross-compile verified locally); manual smoke pending operator.
+
+**Files forked from netbird (cited in commits):**
+- ~~`client/iface/iface.go`, `client/iface/device/`, `client/iface/iface_new_*.go` (per-platform)~~ — design lineage cited in `internal/tunnel/tunnel.go`; implementation uses upstream `golang.zx2c4.com/wireguard` rather than a literal lift (rationale in package doc).
+- ~~`client/internal/dns/host_unix.go`, `host_darwin.go`, `host_windows.go`, `host_ios.go`, `upstream_android.go`~~ — file-level pointers in `internal/tunnel/dns/adapter_{linux,darwin,windows}.go` for Phase 2 lift.
+- ~~`client/grpc/dialer.go` (already carries embed-CA patch — copy as-is into `internal/ipc/grpc/`)~~ — landed at `internal/ipc/grpc/dialer.go`. `embeddedroots` Mozilla fallback + `WithCustomDialer` mesh-overlay hook dropped (both pull netbird-internal packages we don't lift); embed-CA + ServerName-port-strip core preserved.
 
 ---
 

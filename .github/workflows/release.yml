@@ -3,20 +3,23 @@ name: release
 # HANDOFF.md Track E — five-platform CI matrix + cosign-signed releases.
 # Mirrors goat-trunk's snitch.yml (Block 61H pattern):
 #   - six desktop targets: linux/{amd64,arm64} darwin/{amd64,arm64} windows/{amd64,arm64}
-#   - CGO_ENABLED=0 throughout (per Track E spec; revisit if Fyne GUI in
-#     Track B forces CGO=1 — that's a captain decision)
+#   - DAEMON cross-compiled with CGO_ENABLED=0 (reproducible, Track E spec)
+#   - GUI cross-compile is deferred — Fyne v2.7's go-gl/glfw imports need
+#     CGO + platform-native windowing/GL toolchains (X11/Mesa on Linux,
+#     Cocoa/AppKit on darwin, Win32 on windows) which a Linux cross-
+#     compile runner can't easily satisfy. Phase 2 of Track E will add a
+#     parallel matrix that builds the GUI natively on each platform's
+#     GitHub-hosted runner (ubuntu-latest / macos-latest / windows-latest).
+#     Until then, releases ship daemon-only binaries and the GUI is built
+#     by operators via `go build ./cmd/goat-client` on their host.
 #   - reproducible build flags: -trimpath -buildvcs=false -ldflags="-s -w"
-#   - per-platform archive bundling both binaries (goat-client GUI +
-#     goat-clientd daemon); per-archive .sha256 sidecar; aggregate
-#     SHA256SUMS manifest
+#   - per-archive .sha256 sidecar; aggregate SHA256SUMS manifest
 #   - cosign keyless signing via sigstore + GitHub Actions OIDC on tag
 #     push (refs/tags/goat-client-v*); per-archive .cosign-bundle sidecar
 #   - GitHub Release with all assets on tag push
 #
-# Why archives instead of raw binaries: each platform deliverable is a
-# pair (GUI + daemon). Bundling them as one platform-tagged archive
-# matches the "6 binaries + 6 .sha256" intent in HANDOFF.md (six per-
-# platform deliverables). Operators verify with:
+# Why archives instead of raw binaries: matches the "6 binaries + 6 .sha256"
+# intent in HANDOFF.md (six per-platform deliverables). Operators verify with:
 #
 #   cosign verify-blob \
 #     --bundle goat-client-linux-amd64.tar.gz.cosign-bundle \
@@ -84,8 +87,12 @@ jobs:
           ts=$(git log -1 --format=%ct HEAD)
           echo "epoch=${ts}" >> "$GITHUB_OUTPUT"
       - name: go vet (per-target view of build tags)
-        run: go vet ./...
-      - name: Cross-compile binaries
+        # Vet only the daemon-side packages: cmd/goat-client + internal/ui
+        # pull in go-gl/glfw which needs a CGO + native-windowing toolchain
+        # the cross-compile runner doesn't have. Native GUI vet runs in
+        # ci.yml (Linux amd64 with X11/GL apt packages).
+        run: go vet ./cmd/goat-clientd ./internal/bundle/... ./internal/ipc/... ./internal/tunnel/... ./internal/daemon/... ./internal/reachability/...
+      - name: Cross-compile daemon binary
         id: build
         env:
           SOURCE_DATE_EPOCH: ${{ steps.ts.outputs.epoch }}
@@ -94,26 +101,29 @@ jobs:
           ext=""
           [ "$GOOS" = "windows" ] && ext=".exe"
           mkdir -p stage
-          # Both desktop binaries land in the same archive — see
-          # workflow header for rationale.
-          go build -trimpath -buildvcs=false -ldflags="-s -w" \
-            -o "stage/goat-client${ext}" ./cmd/goat-client
+          # Daemon-only cross-compile — see workflow header for the
+          # GUI deferral rationale. The GUI binary is operator-built
+          # against the host's native CGO toolchain until Phase 2 of
+          # Track E adds a parallel native-runner matrix.
           go build -trimpath -buildvcs=false -ldflags="-s -w" \
             -o "stage/goat-clientd${ext}" ./cmd/goat-clientd
           echo "ext=${ext}" >> "$GITHUB_OUTPUT"
       - name: Verify per-target test compile
-        # Build-tag-split per-OS files — once Track A's per-platform DNS
-        # adapters land — will need their test files compilable per
-        # target. Today's scaffold has no tests, so this is a no-op
-        # placeholder that will exercise once tests exist. Kept here so
-        # the same pattern as goat-trunk snitch is in place.
+        # Build-tag-split per-OS files (peercreds_*.go on POSIX,
+        # platform_*.go on each desktop) need their _test.go files
+        # compilable per target. Skip the GUI packages for the same
+        # CGO reason as the vet step above.
+        #
+        # `go test -c` compiles a test binary without running it.
+        # `go test -count=0` would actually exec the cross-compiled
+        # binary on this Linux runner — windows.exe / darwin Mach-O
+        # both crash with "exec format error" — so -c is mandatory
+        # here. Discarding the artifact via -o /dev/null.
         run: |
           set -euo pipefail
-          if find . -name '*_test.go' -not -path './.git/*' | head -1 | grep -q .; then
-            go test -count=0 ./... >/dev/null
-          else
-            echo "no _test.go files yet; skipping per-target test compile"
-          fi
+          for pkg in ./internal/bundle ./internal/ipc ./internal/tunnel; do
+            go test -c -o /dev/null "$pkg"
+          done
       - name: Pack platform archive
         id: pack
         env:
@@ -128,7 +138,7 @@ jobs:
             # are platform-relative (we cd into stage/) for clean
             # archive layout.
             (cd stage && zip -X -9 "../${archive}" \
-              "goat-client${ext}" "goat-clientd${ext}" >/dev/null)
+              "goat-clientd${ext}" >/dev/null)
           else
             archive="${name}.tar.gz"
             # GNU tar reproducibility flags: lock owner/group/mtime,
@@ -137,7 +147,7 @@ jobs:
             tar --sort=name \
                 --mtime="@${SOURCE_DATE_EPOCH}" \
                 --owner=0 --group=0 --numeric-owner \
-                -cf - -C stage "goat-client${ext}" "goat-clientd${ext}" \
+                -cf - -C stage "goat-clientd${ext}" \
               | gzip -9n > "${archive}"
           fi
           sha256sum "${archive}" > "${archive}.sha256"
@@ -289,8 +299,10 @@ jobs:
             ## goat-client ${{ github.ref_name }}
 
             Six desktop targets, each shipped as a `.tar.gz` (Linux / macOS) or
-            `.zip` (Windows) bundling both binaries: `goat-client` (Fyne GUI)
-            and `goat-clientd` (system daemon).
+            `.zip` (Windows) carrying the `goat-clientd` system daemon. The
+            `goat-client` Fyne GUI is currently operator-built against the
+            host's CGO toolchain — Phase 2 of Track E will add a native-runner
+            matrix that bundles the GUI alongside the daemon.
 
             ### Verifying
 
