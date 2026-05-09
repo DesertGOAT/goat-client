@@ -1,0 +1,53 @@
+name: integration
+
+# Track G — bundle-import + IPC integration test, Tier-A.
+#
+# Tier-B realprotocol sibling lives in a separate workflow that the
+# captain wires once Track A's wg-cp0 driver has a CI-runnable mode
+# (it requires a live lab endpoint + bundle).
+#
+# Distinct from Track E's `ci.yml` (always-fast vet/test/build gate)
+# and `release.yml` (six-target cross-compile + signing) — this
+# workflow only adds the integration-tag class, which:
+#   1. builds cmd/goat-clientd (CGO_ENABLED=0; in-test, lazily cached);
+#   2. mints a fresh Ed25519 trust root + signs a CBOR bundle in the
+#      test process (no test fixtures committed);
+#   3. spawns the daemon on a temp Unix socket;
+#   4. drives ImportBundle / GetStatus / GetDiagnostics + the
+#      no-bundle Connect-rejection path.
+# Connect post-import (real wg-cp0 bring-up) is the realprotocol-tag
+# sibling's job — wireguard-go user-mode needs CAP_NET_ADMIN / TUN
+# device which ubuntu-latest doesn't grant default.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tier-a:
+    name: integration (Tier-A — IPC contract end-to-end)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: go test -tags integration
+        run: go test -tags integration -count=1 -v -timeout 2m ./tests/integration/...
+
+      - name: go test -tags realprotocol (compile + skip behavior)
+        # Build-tag compiles cleanly; tests skip when env unset, which is
+        # the expected state on PR runs (lab access is captain-side).
+        run: go test -tags realprotocol -count=1 -v -run=TestRealProtocol ./tests/integration/...
