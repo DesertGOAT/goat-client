@@ -173,7 +173,9 @@
 
 ---
 
-## Track G — bundle-import IPC contract + integration test
+## ~~Track G — bundle-import IPC contract + integration test~~ — PR #6 ready for review (2026-05-09)
+
+**Status (2026-05-09):** Track acceptance met in branch `track/bundle-ipc-test`, PR [#6](https://github.com/dlf-dds/goat-client/pull/6) ready for captain review. After Track A merged (PR #3), Track G's deliverable narrowed to the integration-test layer alone — Track A authored `internal/ipc` and `internal/daemon`. Track G adds `tests/integration/` (6 hermetic Tier-A tests that build the daemon, mint a fresh Ed25519 trust root + signed CBOR bundle in-process, drive ImportBundle / GetStatus / GetDiagnostics / persist-across-restart / no-bundle-Connect-rejection through the binary) plus a realprotocol-tagged Tier-B sibling skipped behind `GOAT_LAB_BUNDLE_PATH` + `GOAT_LAB_TRUST_ROOTS_PATH`, plus `.github/workflows/integration.yml`. `Connect` post-import is the realprotocol-tier job — Track A's `wireguard-go` user-mode brings up a real wg-cp0 which needs `CAP_NET_ADMIN`/TUN.
 
 **Track name:** `goat-client-bundle-ipc-test`
 **Branch:** `track/bundle-ipc-test`
