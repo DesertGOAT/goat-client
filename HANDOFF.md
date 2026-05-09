@@ -139,7 +139,9 @@
 
 ---
 
-## Track E — five-platform CI matrix + cosign-signed releases
+## ~~Track E — five-platform CI matrix + cosign-signed releases~~
+
+> **Status:** PR [#2](https://github.com/dlf-dds/goat-client/pull/2) ready for review (captain). All three workflows + CODEOWNERS scaffold authored; local acceptance (vet / test / build / cross-compile sanity / actionlint) green. Tag-push acceptance (`goat-client-v0.0.1-pre` → 6 archives + 6 .sha256 + SHA256SUMS + cosign signatures on GitHub Release) is captain-run post-merge.
 
 **Track name:** `goat-client-ci-matrix`
 **Branch:** `track/ci-matrix`
