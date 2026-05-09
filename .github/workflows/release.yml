@@ -113,9 +113,17 @@ jobs:
         # platform_*.go on each desktop) need their _test.go files
         # compilable per target. Skip the GUI packages for the same
         # CGO reason as the vet step above.
+        #
+        # `go test -c` compiles a test binary without running it.
+        # `go test -count=0` would actually exec the cross-compiled
+        # binary on this Linux runner — windows.exe / darwin Mach-O
+        # both crash with "exec format error" — so -c is mandatory
+        # here. Discarding the artifact via -o /dev/null.
         run: |
           set -euo pipefail
-          go test -count=0 ./internal/bundle/... ./internal/ipc/... ./internal/tunnel/... ./internal/daemon/... >/dev/null
+          for pkg in ./internal/bundle ./internal/ipc ./internal/tunnel; do
+            go test -c -o /dev/null "$pkg"
+          done
       - name: Pack platform archive
         id: pack
         env:
