@@ -28,6 +28,17 @@ go build ./...
 
 (Currently builds the scaffolding stubs. Real build emerges as workstreams land.)
 
+### iOS
+
+iOS shell + gomobile facade live under [`mobile/ios/`](mobile/ios/README.md). Build the xcframework + Xcode project for iOS Simulator (no Apple Developer Program needed):
+
+```bash
+./mobile/ios/scripts/build-xcframework.sh   # gomobile bind → mobile/ios/GoatClientSDK.xcframework
+( cd mobile/ios/Shell && xcodegen generate ) # project.yml → GoatClient.xcodeproj
+xcodebuild -project mobile/ios/Shell/GoatClient.xcodeproj \
+  -scheme GoatClient -destination 'platform=iOS Simulator,name=iPhone 15'
+```
+
 ## Documentation
 
 Authoritative design + ADR live in the goat trunk:
