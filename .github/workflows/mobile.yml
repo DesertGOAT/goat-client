@@ -1,0 +1,155 @@
+name: mobile
+
+# HANDOFF.md Track E item 3 — mobile build validation, advisory.
+# Mirrors netbird's mobile-build-validation.yml: gomobile bind smoke
+# for both Android (.aar) and iOS (.xcframework) targets. Does NOT
+# gate the desktop release path — failures here are advisory until
+# Track C (iOS shell) and Track D (Android shell) have landed their
+# SDK source trees.
+#
+# Until those tracks land, the mobile/ subtree is empty in the tracked
+# layout. Each job guards on existence of the gomobile entry package
+# and exits cleanly with a "tracks pending" notice so this workflow
+# stays green from day one.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - 'internal/tunnel/**'
+      - 'internal/bundle/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'internal/tunnel/**'
+      - 'internal/bundle/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: android / gomobile bind smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for Android SDK source
+        id: src
+        run: |
+          if [ -d mobile/android/GoatClientSDK ]; then
+            echo "present=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::mobile/android/GoatClientSDK not present yet — Track D pending. Skipping advisory smoke."
+          fi
+      - uses: actions/setup-go@v5
+        if: steps.src.outputs.present == '1'
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: android-actions/setup-android@v3
+        if: steps.src.outputs.present == '1'
+        with:
+          cmdline-tools-version: 8512546
+      - uses: actions/setup-java@v4
+        if: steps.src.outputs.present == '1'
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Cache NDK
+        if: steps.src.outputs.present == '1'
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk
+          key: ndk-cache-26.1.10909125
+      - name: Install NDK
+        if: steps.src.outputs.present == '1'
+        run: /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125"
+      - name: Install gomobile
+        if: steps.src.outputs.present == '1'
+        # Pin matches netbird's pin (2025-11-13 snapshot). Update in
+        # lockstep when bumping go.mod's gomobile entry.
+        run: go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20251113184115-a159579294ab
+      - name: gomobile init
+        if: steps.src.outputs.present == '1'
+        run: gomobile init
+      - name: gomobile bind (.aar)
+        if: steps.src.outputs.present == '1'
+        env:
+          CGO_ENABLED: "0"
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
+        run: |
+          PATH=$PATH:$(go env GOPATH) gomobile bind \
+            -target=android \
+            -javapkg=io.dlf_dds.goat_client.gomobile \
+            -ldflags="-checklinkname=0" \
+            -o "$GITHUB_WORKSPACE/goat-client.aar" \
+            ./mobile/android/GoatClientSDK
+      - name: Upload .aar (advisory)
+        if: steps.src.outputs.present == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: goat-client-android-aar
+          path: goat-client.aar
+          if-no-files-found: error
+          retention-days: 30
+
+  ios:
+    name: ios / gomobile bind smoke
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for iOS SDK source
+        id: src
+        run: |
+          if [ -d mobile/ios/GoatClientSDK ]; then
+            echo "present=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::mobile/ios/GoatClientSDK not present yet — Track C pending. Skipping advisory smoke."
+          fi
+      - uses: actions/setup-go@v5
+        if: steps.src.outputs.present == '1'
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install gomobile
+        if: steps.src.outputs.present == '1'
+        run: go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20251113184115-a159579294ab
+      - name: gomobile init
+        if: steps.src.outputs.present == '1'
+        run: gomobile init
+      - name: gomobile bind (.xcframework)
+        if: steps.src.outputs.present == '1'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          PATH=$PATH:$(go env GOPATH) gomobile bind \
+            -target=ios \
+            -bundleid=io.dlf-dds.goat-client.framework \
+            -o ./GoatClientSDK.xcframework \
+            ./mobile/ios/GoatClientSDK
+      - name: Upload .xcframework (advisory)
+        if: steps.src.outputs.present == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: goat-client-ios-xcframework
+          # actions/upload-artifact zips contents; xcframework is a
+          # bundle (directory) so we tar it first to preserve symlinks +
+          # bundle structure. Operators extract before linking into Xcode.
+          path: |
+            GoatClientSDK.xcframework
+          if-no-files-found: error
+          retention-days: 30

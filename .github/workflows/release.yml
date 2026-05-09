@@ -1,0 +1,312 @@
+name: release
+
+# HANDOFF.md Track E — five-platform CI matrix + cosign-signed releases.
+# Mirrors goat-trunk's snitch.yml (Block 61H pattern):
+#   - six desktop targets: linux/{amd64,arm64} darwin/{amd64,arm64} windows/{amd64,arm64}
+#   - CGO_ENABLED=0 throughout (per Track E spec; revisit if Fyne GUI in
+#     Track B forces CGO=1 — that's a captain decision)
+#   - reproducible build flags: -trimpath -buildvcs=false -ldflags="-s -w"
+#   - per-platform archive bundling both binaries (goat-client GUI +
+#     goat-clientd daemon); per-archive .sha256 sidecar; aggregate
+#     SHA256SUMS manifest
+#   - cosign keyless signing via sigstore + GitHub Actions OIDC on tag
+#     push (refs/tags/goat-client-v*); per-archive .cosign-bundle sidecar
+#   - GitHub Release with all assets on tag push
+#
+# Why archives instead of raw binaries: each platform deliverable is a
+# pair (GUI + daemon). Bundling them as one platform-tagged archive
+# matches the "6 binaries + 6 .sha256" intent in HANDOFF.md (six per-
+# platform deliverables). Operators verify with:
+#
+#   cosign verify-blob \
+#     --bundle goat-client-linux-amd64.tar.gz.cosign-bundle \
+#     --certificate-identity-regexp '^https://github.com/dlf-dds/goat-client/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     goat-client-linux-amd64.tar.gz
+#
+# Triggers:
+#   - PR / push to main: build matrix + checksums (catches per-target
+#     regressions before tag time)
+#   - tag push goat-client-v*: build + checksums + cosign + Release
+#   - weekly cron: drift catch on toolchain / dependencies
+#   - workflow_dispatch: ad-hoc
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'goat-client-v*'
+  pull_request:
+  schedule:
+    # Saturday 03:23 UTC — same window as goat-trunk's snitch cron, off
+    # the hour to avoid GitHub Actions cron stampedes.
+    - cron: '23 3 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build-matrix:
+    name: build ${{ matrix.target.goos }}/${{ matrix.target.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    env:
+      CGO_ENABLED: "0"
+      GOOS: ${{ matrix.target.goos }}
+      GOARCH: ${{ matrix.target.goarch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Resolve commit timestamp for reproducibility
+        # Sets SOURCE_DATE_EPOCH to the HEAD commit's author time so tar
+        # mtimes below — and any tooling that consults the env var — are
+        # deterministic across re-runs of the same SHA.
+        id: ts
+        run: |
+          set -euo pipefail
+          ts=$(git log -1 --format=%ct HEAD)
+          echo "epoch=${ts}" >> "$GITHUB_OUTPUT"
+      - name: go vet (per-target view of build tags)
+        run: go vet ./...
+      - name: Cross-compile binaries
+        id: build
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.ts.outputs.epoch }}
+        run: |
+          set -euo pipefail
+          ext=""
+          [ "$GOOS" = "windows" ] && ext=".exe"
+          mkdir -p stage
+          # Both desktop binaries land in the same archive — see
+          # workflow header for rationale.
+          go build -trimpath -buildvcs=false -ldflags="-s -w" \
+            -o "stage/goat-client${ext}" ./cmd/goat-client
+          go build -trimpath -buildvcs=false -ldflags="-s -w" \
+            -o "stage/goat-clientd${ext}" ./cmd/goat-clientd
+          echo "ext=${ext}" >> "$GITHUB_OUTPUT"
+      - name: Verify per-target test compile
+        # Build-tag-split per-OS files — once Track A's per-platform DNS
+        # adapters land — will need their test files compilable per
+        # target. Today's scaffold has no tests, so this is a no-op
+        # placeholder that will exercise once tests exist. Kept here so
+        # the same pattern as goat-trunk snitch is in place.
+        run: |
+          set -euo pipefail
+          if find . -name '*_test.go' -not -path './.git/*' | head -1 | grep -q .; then
+            go test -count=0 ./... >/dev/null
+          else
+            echo "no _test.go files yet; skipping per-target test compile"
+          fi
+      - name: Pack platform archive
+        id: pack
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.ts.outputs.epoch }}
+        run: |
+          set -euo pipefail
+          ext="${{ steps.build.outputs.ext }}"
+          name="goat-client-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = "windows" ]; then
+            archive="${name}.zip"
+            # -X strips extra zip fields, -9 max compression, paths
+            # are platform-relative (we cd into stage/) for clean
+            # archive layout.
+            (cd stage && zip -X -9 "../${archive}" \
+              "goat-client${ext}" "goat-clientd${ext}" >/dev/null)
+          else
+            archive="${name}.tar.gz"
+            # GNU tar reproducibility flags: lock owner/group/mtime,
+            # numeric ids, sorted entries. gzip -n strips the original
+            # filename + mtime from the gzip header.
+            tar --sort=name \
+                --mtime="@${SOURCE_DATE_EPOCH}" \
+                --owner=0 --group=0 --numeric-owner \
+                -cf - -C stage "goat-client${ext}" "goat-clientd${ext}" \
+              | gzip -9n > "${archive}"
+          fi
+          sha256sum "${archive}" > "${archive}.sha256"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### goat-client ${GOOS}/${GOARCH}"
+            echo
+            echo "- Archive: \`${archive}\`"
+            echo "- SHA-256: \`$(awk '{print $1}' "${archive}.sha256")\`"
+            echo "- Trimpath + stripped (\`-s -w\`); CGO_ENABLED=0"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: |
+            ${{ steps.pack.outputs.archive }}
+            ${{ steps.pack.outputs.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+  checksums:
+    name: aggregate SHA256SUMS
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all matrix artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Build SHA256SUMS manifest
+        run: |
+          set -euo pipefail
+          (
+            cd artifacts
+            find . -name '*.sha256' -print0 \
+              | xargs -0 cat \
+              | sort -k 2 \
+              > ../SHA256SUMS
+          )
+          {
+            echo "### goat-client SHA256SUMS"
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload SHA256SUMS
+        uses: actions/upload-artifact@v4
+        with:
+          name: goat-client-checksums
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 90
+
+  cosign:
+    name: cosign sign archives
+    # Tag-only: signing on every push wastes Sigstore log entries and
+    # leaks confusing PR-time bundles. We sign exactly what we ship.
+    needs: [build-matrix, checksums]
+    if: startsWith(github.ref, 'refs/tags/goat-client-v')
+    runs-on: ubuntu-latest
+    permissions:
+      # id-token: write is what makes keyless OIDC work — cosign exchanges
+      # it for a Fulcio short-lived cert tied to this workflow's identity.
+      contents: read
+      id-token: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Stage release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          # Flatten platform-named artifact dirs into a single tree.
+          for d in artifacts/goat-client-*; do
+            [ -d "$d" ] || continue
+            base=$(basename "$d")
+            [ "$base" = "goat-client-checksums" ] && continue
+            cp "$d"/* release-assets/
+          done
+          cp artifacts/goat-client-checksums/SHA256SUMS release-assets/SHA256SUMS
+          ls -la release-assets/
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+      - name: Sign archives + SHA256SUMS (keyless, sigstore OIDC)
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for f in goat-client-*.tar.gz goat-client-*.zip SHA256SUMS; do
+            [ -f "$f" ] || continue
+            echo "signing ${f}"
+            cosign sign-blob --yes \
+              --bundle "${f}.cosign-bundle" \
+              "${f}"
+          done
+          ls -la
+          {
+            echo "### cosign keyless signatures"
+            echo
+            echo "Verify with:"
+            echo
+            echo '```bash'
+            echo "cosign verify-blob \\"
+            echo "  --bundle <archive>.cosign-bundle \\"
+            echo "  --certificate-identity-regexp '^https://github.com/dlf-dds/goat-client/' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
+            echo "  <archive>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload signed assets bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: goat-client-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: attach assets to GitHub Release
+    needs: [cosign]
+    if: startsWith(github.ref, 'refs/tags/goat-client-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed assets
+        uses: actions/download-artifact@v4
+        with:
+          name: goat-client-release-assets
+          path: release-assets
+      - name: List final assets
+        run: ls -la release-assets/
+      - name: Create or update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          body: |
+            ## goat-client ${{ github.ref_name }}
+
+            Six desktop targets, each shipped as a `.tar.gz` (Linux / macOS) or
+            `.zip` (Windows) bundling both binaries: `goat-client` (Fyne GUI)
+            and `goat-clientd` (system daemon).
+
+            ### Verifying
+
+            All archives + `SHA256SUMS` are signed with cosign keyless
+            (sigstore + GitHub Actions OIDC). Verify any archive with:
+
+            ```bash
+            cosign verify-blob \
+              --bundle <archive>.cosign-bundle \
+              --certificate-identity-regexp '^https://github.com/dlf-dds/goat-client/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              <archive>
+            ```
+
+            And the manifest:
+
+            ```bash
+            sha256sum -c SHA256SUMS
+            ```
