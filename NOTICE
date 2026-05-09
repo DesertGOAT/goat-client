@@ -13,7 +13,13 @@ following packages were forked from upstream netbird and adapted:
   - client/internal/dns/  Per-OS DNS configuration (systemd-resolved, scutil, NRPT, NEDNSSettings)
   - client/ios/        iOS gomobile facade (NetworkExtension bridge)
   - client/android/    Android gomobile facade (VpnService bridge)
-  - client/ui/         Fyne desktop GUI (heavily reshaped — login flow stripped, bundle-import added)
+  - client/ui/         Fyne desktop GUI — pattern-derived only (parent-process
+                       systray + child-process Fyne window split, cross-
+                       platform notifier interface). Bundle-import dialog,
+                       status pane, and diagnostics pane authored fresh
+                       against the goat-client IPC contract. No source
+                       files copied verbatim; no netbird-trademarked icon
+                       assets carried over (tray icons generated at init).
   - client/grpc/       gRPC dialer (carries the embed-CA + ServerName-port-strip patch from goat fork)
   - client/proto/      gRPC daemon IPC (reshaped — mesh RPCs stripped)
 

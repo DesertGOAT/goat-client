@@ -1,0 +1,98 @@
+package ui
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+
+	"github.com/dlf-dds/goat-client/internal/ipc"
+)
+
+// diagnosticsPane renders the WireGuard log tail + a "test connection"
+// button that asks the daemon for a fresh reachability probe and surfaces
+// the result inline.
+type diagnosticsPane struct {
+	client ipc.Client
+
+	logs     *widget.Entry
+	probeMsg *widget.Label
+	root     fyne.CanvasObject
+}
+
+func newDiagnosticsPane(client ipc.Client) *diagnosticsPane {
+	p := &diagnosticsPane{
+		client:   client,
+		logs:     widget.NewMultiLineEntry(),
+		probeMsg: widget.NewLabel(""),
+	}
+	p.logs.Disable()
+	p.logs.Wrapping = fyne.TextWrapOff
+	p.probeMsg.Wrapping = fyne.TextWrapWord
+
+	test := widget.NewButton("Test connection", func() { p.runProbe() })
+	refresh := widget.NewButton("Refresh", func() { p.Refresh() })
+	buttons := container.NewHBox(test, refresh)
+
+	p.root = container.NewBorder(
+		nil,
+		container.NewVBox(p.probeMsg, buttons),
+		nil, nil,
+		container.NewScroll(p.logs),
+	)
+	p.Refresh()
+	return p
+}
+
+func (p *diagnosticsPane) Content() fyne.CanvasObject { return p.root }
+
+func (p *diagnosticsPane) Refresh() {
+	if p.client == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d, err := p.client.GetDiagnostics(ctx)
+	if err != nil {
+		p.probeMsg.SetText("Failed to fetch diagnostics: " + err.Error())
+		return
+	}
+	p.logs.SetText(strings.Join(d.LogTail, "\n"))
+	p.renderProbe(d)
+}
+
+func (p *diagnosticsPane) runProbe() {
+	if p.client == nil {
+		return
+	}
+	p.probeMsg.SetText("Probing...")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		d, err := p.client.GetDiagnostics(ctx)
+		if err != nil {
+			p.probeMsg.SetText("Probe failed: " + err.Error())
+			return
+		}
+		p.renderProbe(d)
+		p.logs.SetText(strings.Join(d.LogTail, "\n"))
+	}()
+}
+
+func (p *diagnosticsPane) renderProbe(d *ipc.Diagnostics) {
+	if d.LastProbe.IsZero() {
+		p.probeMsg.SetText("No probe yet")
+		return
+	}
+	when := d.LastProbe.Format(time.RFC3339)
+	if d.Reachable {
+		p.probeMsg.SetText("Reachable as of " + when)
+	} else if d.ProbeError != "" {
+		p.probeMsg.SetText("Unreachable as of " + when + ": " + d.ProbeError)
+	} else {
+		p.probeMsg.SetText("Unreachable as of " + when)
+	}
+}
