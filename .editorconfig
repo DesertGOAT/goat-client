@@ -1,0 +1,51 @@
+# EditorConfig — https://editorconfig.org
+# Top-level: stop walking up the tree here.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Go: gofmt uses tabs. Don't fight it.
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Makefiles require literal tabs.
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+# Shell scripts: 2-space indent (matches goat-trunk's convention).
+[*.{sh,bash}]
+indent_style = space
+indent_size = 2
+
+# Swift (iOS shell, Track C).
+[*.swift]
+indent_style = space
+indent_size = 4
+
+# Kotlin (Android shell, Track D).
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+
+# Markdown: don't trim trailing whitespace — two-space line breaks are
+# semantic in CommonMark.
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML (workflows, packaging manifests).
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# JSON (CODEOWNERS-adjacent config, package metadata).
+[*.json]
+indent_style = space
+indent_size = 2
