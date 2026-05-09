@@ -1,0 +1,8 @@
+# /etc/default/goat-client — env file for the goat-clientd systemd unit.
+# Marked `conffile` (config|noreplace) so operator edits survive upgrades.
+
+# Extra flags appended to the daemon command line. Empty by default.
+# Examples:
+#   --log-level=debug
+#   --userspace-wg          # force wireguard-go even if kernel WG is present
+GOAT_CLIENTD_FLAGS=

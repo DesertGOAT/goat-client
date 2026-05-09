@@ -1,0 +1,98 @@
+---
+# nfpm config for the Debian/Ubuntu .deb of goat-client.
+#
+# Driven by `nfpm pkg --config packaging/deb/nfpm.yaml --packager deb --target dist/`
+# from CI (Track E supplies built binaries in dist/<goos>_<goarch>/).
+#
+# Conventions cribbed from netbird's .goreleaser nfpms section. See
+# packaging/README.md for the install layout and substitution variables.
+
+name: goat-client
+arch: ${GOARCH}                 # amd64 | arm64 — set by CI per matrix row
+platform: linux
+version: ${VERSION}             # e.g. 0.0.1 — semver without leading v
+section: net
+priority: optional
+maintainer: dlf-dds <ops@dlf-dds.invalid>
+description: |
+  goat-client — single-tunnel WireGuard client for the goat overlay.
+  Consumes an offline-CA-signed CBOR enrollment bundle and brings up
+  the wg-cp0 outer tunnel. Includes a system daemon (goat-clientd) and
+  a Fyne desktop GUI (goat-client).
+vendor: dlf-dds
+homepage: https://github.com/dlf-dds/goat-client
+license: BSD-3-Clause
+
+depends:
+  - libc6
+  # wireguard-tools is not strictly required (we drive the WG iface
+  # directly via the netlink-WG kernel API) but ships handy diagnostics
+  # like `wg show`. Keep as a Recommends, not Depends, so minimal
+  # installs still work.
+recommends:
+  - wireguard-tools
+
+contents:
+  # Daemon binary. Track E populates dist/linux_${GOARCH}/ before nfpm runs.
+  - src: ./dist/linux_${GOARCH}/goat-clientd
+    dst: /usr/bin/goat-clientd
+    file_info:
+      mode: 0755
+
+  # Fyne GUI binary. Per-user app, launched from .desktop entry.
+  - src: ./dist/linux_${GOARCH}/goat-client
+    dst: /usr/bin/goat-client
+    file_info:
+      mode: 0755
+
+  # systemd unit — daemon runs as the `goat-client` system user (created
+  # by postinstall), with a tight sandbox per netbird's netbird@.service
+  # template (LockPersonality / ProtectSystem / RestrictNamespaces /
+  # MemoryDenyWriteExecute / etc.).
+  - src: ./packaging/deb/systemd/goat-clientd.service
+    dst: /lib/systemd/system/goat-clientd.service
+    file_info:
+      mode: 0644
+
+  # XDG .desktop entry for the GUI. Surfaces in GNOME / KDE app menus.
+  - src: ./packaging/deb/goat-client.desktop
+    dst: /usr/share/applications/goat-client.desktop
+    file_info:
+      mode: 0644
+
+  # PNG icon referenced by goat-client.desktop. The actual asset lands
+  # in Track B (internal/ui/assets/) — packaging copies it into place.
+  - src: ./internal/ui/assets/goat-client.png
+    dst: /usr/share/icons/hicolor/256x256/apps/goat-client.png
+    file_info:
+      mode: 0644
+    type: ghost                 # tolerate missing file in skeleton CI
+
+  # Default env file for the unit (operator-edited; not overwritten on
+  # upgrade thanks to deb's conffile handling).
+  - src: ./packaging/deb/default/goat-client
+    dst: /etc/default/goat-client
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+  # State + log + runtime dirs are created by systemd via {State,Logs,
+  # Runtime}Directory= in the unit. Bundle drop dir is created by the
+  # daemon on first import.
+
+scripts:
+  preinstall: ./packaging/deb/scripts/preinstall.sh
+  postinstall: ./packaging/deb/scripts/postinstall.sh
+  preremove: ./packaging/deb/scripts/preremove.sh
+  postremove: ./packaging/deb/scripts/postremove.sh
+
+deb:
+  fields:
+    Bugs: https://github.com/dlf-dds/goat-client/issues
+  triggers:
+    interest_noawait:
+      - update-desktop-database
+      - gtk-update-icon-cache
+  # Conffiles handled via `type: config|noreplace` in contents above.
+  # Signing (dpkg-sig / debsigs) is operator-fired procurement; CI
+  # ships unsigned engineering builds.

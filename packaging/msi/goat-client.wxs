@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    WiX v4 manifest for goat-client.msi.
+
+    Built with: wix build packaging/msi/goat-client.wxs \
+                  -d ProcessorArchitecture=x64 \
+                  -d ArchSuffix=amd64 \
+                  -d Version=$env:GOAT_VERSION \
+                  -o dist/goat-client-${VERSION}-amd64.msi
+
+    Authenticode signing (signtool /sign /fd SHA256 ...) is operator-
+    fired procurement; engineering builds ship unsigned.
+
+    Structural reference: ~/src/github.com/dfarrel1/netbird/client/netbird.wxs.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+    <Package Name="goat-client"
+             Version="$(env.GOAT_VERSION)"
+             Manufacturer="dlf-dds"
+             Language="1033"
+             UpgradeCode="9c8a4e30-1f0d-4f9b-8c0a-d2f3a3f1c001"
+             InstallerVersion="500"
+             Compressed="yes"
+             Codepage="utf-8">
+
+        <MediaTemplate EmbedCab="yes" />
+
+        <Feature Id="GoatClientFeature" Title="goat-client" Level="1">
+            <ComponentGroupRef Id="GoatClientFilesComponent" />
+        </Feature>
+
+        <MajorUpgrade AllowSameVersionUpgrades="yes"
+                      DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+        <!-- Autostart of the GUI is opt-in; on by default. AUTOSTART=0 disables. -->
+        <Property Id="AUTOSTART" Value="1" />
+
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="GoatClientInstallDir" Name="goat-client">
+                <Component Id="GoatClientFiles"
+                           Guid="b8c3e2a4-1d5e-4c2b-9f08-a4b6c7d8e9f0"
+                           Bitness="always64">
+
+                    <!-- Daemon binary; runs as a Windows Service. -->
+                    <File ProcessorArchitecture="$(var.ProcessorArchitecture)"
+                          Source=".\dist\windows_$(var.ArchSuffix)\goat-clientd.exe"
+                          KeyPath="yes" />
+
+                    <!-- GUI binary + Start Menu / Desktop shortcuts. -->
+                    <File ProcessorArchitecture="$(var.ProcessorArchitecture)"
+                          Source=".\dist\windows_$(var.ArchSuffix)\goat-client.exe">
+                        <Shortcut Id="GoatClientStartMenuShortcut"
+                                  Directory="ProgramMenuFolder"
+                                  Name="goat-client"
+                                  WorkingDirectory="GoatClientInstallDir"
+                                  Icon="GoatClientIcon">
+                            <ShortcutProperty Key="System.AppUserModel.ID"
+                                              Value="io.dlf-dds.goat-client" />
+                        </Shortcut>
+                        <Shortcut Id="GoatClientDesktopShortcut"
+                                  Directory="DesktopFolder"
+                                  Name="goat-client"
+                                  WorkingDirectory="GoatClientInstallDir"
+                                  Icon="GoatClientIcon">
+                            <ShortcutProperty Key="System.AppUserModel.ID"
+                                              Value="io.dlf-dds.goat-client" />
+                        </Shortcut>
+                    </File>
+
+                    <!-- wintun.dll: required by the WireGuard userspace driver
+                         on Windows. Sourced from wintun.net, vendored at
+                         build time per netbird's pattern. -->
+                    <File ProcessorArchitecture="$(var.ProcessorArchitecture)"
+                          Source=".\dist\windows_$(var.ArchSuffix)\wintun.dll" />
+
+                    <!-- Toast notification icon. -->
+                    <File Id="GoatClientToastIcon"
+                          Name="goat-client.png"
+                          Source=".\internal\ui\assets\goat-client.png" />
+
+                    <!-- Windows Service for the daemon. Type=ownProcess so it
+                         runs under its own goat-clientd.exe. LocalSystem is
+                         required for utun + wintun creation. -->
+                    <ServiceInstall Id="GoatClientService"
+                                    Name="goat-clientd"
+                                    DisplayName="goat-client tunnel daemon"
+                                    Description="Single-tunnel WireGuard client for the goat overlay."
+                                    Start="auto"
+                                    Type="ownProcess"
+                                    ErrorControl="normal"
+                                    Account="LocalSystem"
+                                    Vital="yes"
+                                    Interactive="no"
+                                    Arguments="run --bundle-dir=&quot;[CommonAppDataFolder]goat-client&quot; --ipc-pipe=\\.\pipe\goat-client" />
+                    <ServiceControl Id="GoatClientServiceControl"
+                                    Name="goat-clientd"
+                                    Start="install"
+                                    Stop="both"
+                                    Remove="uninstall"
+                                    Wait="yes" />
+
+                    <!-- Add install dir to PATH so operators can run
+                         `goat-clientd version` from any shell. -->
+                    <Environment Id="UpdatePath"
+                                 Name="PATH"
+                                 Value="[GoatClientInstallDir]"
+                                 Part="last"
+                                 Action="set"
+                                 System="yes" />
+
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <!-- Per-user AppUserModelId registry component (HKCU keypath; ICE57). -->
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Component Id="GoatClientAumidRegistry" Guid="*">
+                <RegistryKey Root="HKCU"
+                             Key="Software\Classes\AppUserModelId\io.dlf-dds.goat-client"
+                             ForceDeleteOnUninstall="yes">
+                    <RegistryValue Name="InstalledByMSI" Type="integer" Value="1" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+        </StandardDirectory>
+
+        <!-- Optional autostart of the GUI on user login. Per-machine HKLM Run key. -->
+        <StandardDirectory Id="CommonAppDataFolder">
+            <Directory Id="GoatClientAutoStartDir" Name="goat-client">
+                <Component Id="GoatClientAutoStart"
+                           Guid="2f7e1d4b-3a9c-4e0f-8b6d-c1a2b3d4e5f6"
+                           Bitness="always64"
+                           Condition='AUTOSTART = "1"'>
+                    <RegistryValue Root="HKLM"
+                                   Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                                   Name="goat-client"
+                                   Value="&quot;[GoatClientInstallDir]goat-client.exe&quot;"
+                                   Type="string"
+                                   KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <ComponentGroup Id="GoatClientFilesComponent">
+            <ComponentRef Id="GoatClientFiles" />
+            <ComponentRef Id="GoatClientAumidRegistry" />
+            <ComponentRef Id="GoatClientAutoStart" />
+        </ComponentGroup>
+
+        <!-- Close running instances before upgrade. -->
+        <util:CloseApplication Id="CloseGoatClientd"
+                               CloseMessage="no"
+                               Target="goat-clientd.exe"
+                               RebootPrompt="no" />
+        <util:CloseApplication Id="CloseGoatClient"
+                               CloseMessage="no"
+                               Target="goat-client.exe"
+                               RebootPrompt="no"
+                               TerminateProcess="0" />
+
+        <Icon Id="GoatClientIcon" SourceFile=".\internal\ui\assets\goat-client.ico" />
+        <Property Id="ARPPRODUCTICON" Value="GoatClientIcon" />
+        <Property Id="ARPHELPLINK" Value="https://github.com/dlf-dds/goat-client" />
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/dlf-dds/goat-client" />
+
+    </Package>
+</Wix>

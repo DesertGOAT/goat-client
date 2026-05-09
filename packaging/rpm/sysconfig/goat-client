@@ -1,0 +1,8 @@
+# /etc/sysconfig/goat-client — env file for the goat-clientd systemd unit.
+# Marked %config(noreplace) by nfpm, so operator edits survive upgrades.
+
+# Extra flags appended to the daemon command line.
+# Examples:
+#   --log-level=debug
+#   --userspace-wg
+GOAT_CLIENTD_FLAGS=

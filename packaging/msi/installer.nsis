@@ -1,0 +1,201 @@
+; installer.nsis — alternate Windows installer using NSIS.
+;
+; Kept alongside the WiX manifest (goat-client.wxs) because:
+;   - WiX produces a real .msi (Group Policy / SCCM friendly), but
+;     requires WiX v4 toolchain on the build host.
+;   - NSIS produces a self-extracting .exe (simpler for ad-hoc users)
+;     and is what netbird ships today (~/src/github.com/dfarrel1/netbird/
+;     client/installer.nsis is the structural reference).
+;
+; Track E's CI matrix builds whichever one the operator selects via the
+; PACKAGING_FORMAT env var (default: wix). Both produce a working
+; install/uninstall round-trip.
+
+!define APP_NAME       "goat-client"
+!define COMP_NAME      "dlf-dds"
+!define WEB_SITE       "https://github.com/dlf-dds/goat-client"
+!define VERSION        $%GOAT_VERSION%
+!define COPYRIGHT      "dlf-dds"
+!define DESCRIPTION    "Single-tunnel WireGuard client for the goat overlay."
+!define INSTALLER_NAME "goat-client-installer.exe"
+!define MAIN_APP_EXE   "goat-clientd.exe"
+!define UI_APP_EXE     "goat-client.exe"
+!define ICON           "..\\..\\internal\\ui\\assets\\goat-client.ico"
+!define LICENSE_DATA   "..\\..\\LICENSE"
+
+!define INSTALL_DIR    "$PROGRAMFILES64\${APP_NAME}"
+!define INSTALL_TYPE   "SetShellVarContext all"
+!define REG_ROOT       "HKLM"
+!define REG_APP_PATH   "Software\Microsoft\Windows\CurrentVersion\App Paths\${MAIN_APP_EXE}"
+!define UNINSTALL_PATH "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+!define AUTOSTART_REG_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define DATA_DIR       "$COMMONPROGRAMDATA\goat-client"
+
+Unicode True
+
+VIProductVersion "${VERSION}"
+VIAddVersionKey "ProductName"     "${APP_NAME}"
+VIAddVersionKey "CompanyName"     "${COMP_NAME}"
+VIAddVersionKey "LegalCopyright"  "${COPYRIGHT}"
+VIAddVersionKey "FileDescription" "${DESCRIPTION}"
+VIAddVersionKey "FileVersion"     "${VERSION}"
+
+SetCompressor /SOLID Lzma
+Name "${APP_NAME}"
+Caption "${APP_NAME}"
+OutFile "..\\..\\dist\\${INSTALLER_NAME}"
+BrandingText "${APP_NAME}"
+InstallDirRegKey "${REG_ROOT}" "${REG_APP_PATH}" ""
+InstallDir "${INSTALL_DIR}"
+LicenseData "${LICENSE_DATA}"
+ShowInstDetails Show
+
+!include "MUI2.nsh"
+!include "LogicLib.nsh"
+!include "nsDialogs.nsh"
+
+!define MUI_ICON   "${ICON}"
+!define MUI_UNICON "${ICON}"
+!ifndef ARCH
+    !define ARCH "amd64"
+!endif
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "${LICENSE_DATA}"
+!insertmacro MUI_PAGE_DIRECTORY
+Page custom AutostartPage AutostartPageLeave
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_WELCOME
+UninstPage custom un.DeleteDataPage un.DeleteDataPageLeave
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_UNPAGE_FINISH
+
+!insertmacro MUI_LANGUAGE "English"
+
+Var AutostartCheckbox
+Var AutostartEnabled
+Var DeleteDataCheckbox
+Var DeleteDataEnabled
+
+Function AutostartPage
+    !insertmacro MUI_HEADER_TEXT "Startup Options" "Configure how ${APP_NAME} launches with Windows."
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+        Abort
+    ${EndIf}
+    ${NSD_CreateCheckbox} 0 20u 100% 10u "Start ${APP_NAME} GUI automatically when Windows starts"
+    Pop $AutostartCheckbox
+    ${NSD_Check} $AutostartCheckbox
+    StrCpy $AutostartEnabled "1"
+    nsDialogs::Show
+FunctionEnd
+
+Function AutostartPageLeave
+    ${NSD_GetState} $AutostartCheckbox $AutostartEnabled
+FunctionEnd
+
+Function un.DeleteDataPage
+    !insertmacro MUI_HEADER_TEXT "Uninstall Options" "Choose whether to delete ${APP_NAME} data."
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+        Abort
+    ${EndIf}
+    ${NSD_CreateCheckbox} 0 20u 100% 10u "Delete ${APP_NAME} configuration and state (${DATA_DIR})"
+    Pop $DeleteDataCheckbox
+    ${NSD_Uncheck} $DeleteDataCheckbox
+    StrCpy $DeleteDataEnabled "0"
+    nsDialogs::Show
+FunctionEnd
+
+Function un.DeleteDataPageLeave
+    ${NSD_GetState} $DeleteDataCheckbox $DeleteDataEnabled
+FunctionEnd
+
+Function .onInit
+    StrCpy $INSTDIR "${INSTALL_DIR}"
+    StrCpy $AutostartEnabled "1"
+    SetRegView 64
+FunctionEnd
+
+Function un.onInit
+    SetRegView 64
+FunctionEnd
+
+Section -MainProgram
+    ${INSTALL_TYPE}
+    SetOutPath "$INSTDIR"
+    !if ${ARCH} == "arm64"
+        File /r "..\\..\\dist\\windows_arm64\\"
+    !else
+        File /r "..\\..\\dist\\windows_amd64\\"
+    !endif
+SectionEnd
+
+Section -Icons_Reg
+    SetOutPath "$INSTDIR"
+    WriteUninstaller "$INSTDIR\goat-client_uninstall.exe"
+
+    WriteRegStr ${REG_ROOT} "${REG_APP_PATH}"   ""                  "$INSTDIR\${MAIN_APP_EXE}"
+    WriteRegStr ${REG_ROOT} "${UNINSTALL_PATH}" "DisplayName"       "${APP_NAME}"
+    WriteRegStr ${REG_ROOT} "${UNINSTALL_PATH}" "UninstallString"   "$INSTDIR\goat-client_uninstall.exe"
+    WriteRegStr ${REG_ROOT} "${UNINSTALL_PATH}" "DisplayIcon"       "$INSTDIR\${UI_APP_EXE}"
+    WriteRegStr ${REG_ROOT} "${UNINSTALL_PATH}" "DisplayVersion"    "${VERSION}"
+    WriteRegStr ${REG_ROOT} "${UNINSTALL_PATH}" "Publisher"         "${COMP_NAME}"
+
+    ${If} $AutostartEnabled == "1"
+        WriteRegStr HKLM "${AUTOSTART_REG_KEY}" "${APP_NAME}" '"$INSTDIR\${UI_APP_EXE}"'
+    ${Else}
+        DeleteRegValue HKLM "${AUTOSTART_REG_KEY}" "${APP_NAME}"
+    ${EndIf}
+
+    SetShellVarContext all
+    CreateShortCut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${UI_APP_EXE}"
+    CreateShortCut "$DESKTOP\${APP_NAME}.lnk"    "$INSTDIR\${UI_APP_EXE}"
+SectionEnd
+
+Section -InstallService
+    ; Install + start the daemon as a Windows Service.
+    ; goat-clientd's `service` subcommand wraps the SCM API.
+    ExecWait '"$INSTDIR\${MAIN_APP_EXE}" service install'
+    ExecWait '"$INSTDIR\${MAIN_APP_EXE}" service start'
+    Sleep 1000
+SectionEnd
+
+Section Uninstall
+    ${INSTALL_TYPE}
+
+    DetailPrint "Stopping goat-client service..."
+    ExecWait '"$INSTDIR\${MAIN_APP_EXE}" service stop'
+    DetailPrint "Uninstalling goat-client service..."
+    ExecWait '"$INSTDIR\${MAIN_APP_EXE}" service uninstall'
+
+    DetailPrint "Terminating GUI process..."
+    ExecWait `taskkill /im ${UI_APP_EXE} /f`
+
+    DeleteRegValue HKLM "${AUTOSTART_REG_KEY}" "${APP_NAME}"
+
+    ${If} $DeleteDataEnabled == "1"
+        DetailPrint "Deleting goat-client data ${DATA_DIR}..."
+        RMDir /r "${DATA_DIR}"
+    ${EndIf}
+
+    Sleep 2000
+
+    Delete "$INSTDIR\${UI_APP_EXE}"
+    Delete "$INSTDIR\${MAIN_APP_EXE}"
+    Delete "$INSTDIR\wintun.dll"
+    RmDir /r "$INSTDIR"
+
+    SetShellVarContext all
+    Delete "$DESKTOP\${APP_NAME}.lnk"
+    Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+
+    DeleteRegKey ${REG_ROOT} "${REG_APP_PATH}"
+    DeleteRegKey ${REG_ROOT} "${UNINSTALL_PATH}"
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\io.dlf-dds.goat-client"
+SectionEnd
