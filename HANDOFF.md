@@ -1,14 +1,37 @@
 # goat-client build-out — HANDOFF for parallel worker sessions
 
-**Captain:** the operator's primary Claude Code session in `dlf-dds/DesertBreadBird` (this is one). Integrates worker output and lands milestones.
+> ## ⚠️ STOP. READ THIS FIRST. ⚠️
+>
+> **This file lives in `dlf-dds/goat-client`. You are reading it because you `cd`'d into `/Users/dene/src/github.com/dlf-dds/goat-client/`.**
+>
+> **`goat-client` is a SEPARATE repo from `goat-trunk` (`dlf-dds/DesertBreadBird`).** They are NOT the same checkout. They share design docs only by reference, not by file:
+>
+> - **goat-trunk = `dlf-dds/DesertBreadBird`** at `~/src/github.com/dlf-dds/DesertBreadBird/` — carries `docs/design/goat-client.md` + `docs/adr/0840-*.md` + `docs/project/implementation-plan.md` Block 76. **DESIGN ONLY**, no Go code.
+> - **goat-client = `dlf-dds/goat-client`** at `~/src/github.com/dlf-dds/goat-client/` — carries the actual Go daemon, Fyne GUI, mobile shells, packaging, CI. **THIS REPO**, where the build-out happens.
+>
+> **Common mistake to avoid:** workers seeing goat-trunk's dirty master worktree (cartoon-peers files, `active-work.yaml`, `mgmt-stack-*.md`, etc.) and trying to `/iso enter` there. **Wrong repo.** goat-trunk's dirty state is other tracks' in-flight work — leave it alone. **All Block 76 IMPLEMENTATION happens HERE in goat-client.**
+>
+> **First action of any worker session — verify before touching anything:**
+> ```bash
+> cd /Users/dene/src/github.com/dlf-dds/goat-client/   # MUST be this repo, not goat-trunk
+> pwd                                                   # confirm: ends in /goat-client (NOT /DesertBreadBird)
+> git remote get-url origin                             # confirm: ends in /goat-client.git
+> git fetch origin && git status                        # main should be clean (foundation commit fd3eef9)
+> /iso enter <track-name>                               # provisions worktree of goat-client off origin/main
+> ```
+> If `git status` shows `cartoon-peers.tf` / `active-work.yaml` / `docs/design/multi-agent-team-management.md` in untracked or modified files, **you are in goat-trunk by mistake.** `cd /Users/dene/src/github.com/dlf-dds/goat-client/` and try again. Do **not** stash or commit those files — they're not yours.
 
-**Workers:** N additional Claude Code sessions opened in parallel (one VSCode window per worker). Each picks up exactly **one** track below via `/iso enter <track>`. Tracks run concurrently — no track depends on another track's mid-flight state, only on the foundation commit that landed this scaffolding.
+---
 
-**Working tree convention:** workers `cd /Users/dene/src/github.com/dlf-dds/goat-client` and provision a worktree per track (per the file-level master-worktree-readonly invariant codified in goat-trunk ADR 0013 Amendment 2026-05-09). All Edit/Write target the worktree path, never the master goat-client checkout.
+**Captain:** the operator's primary Claude Code session (currently running with cwd in `dlf-dds/DesertBreadBird` because that's where the design + impl-plan + active-work.yaml live). Integrates worker PRs that target `dlf-dds/goat-client`'s main and lands milestones.
+
+**Workers:** N additional Claude Code sessions opened in parallel (one VSCode window per worker). Each picks up exactly **one** track below via `/iso enter <track>` **inside the `dlf-dds/goat-client` repo, not goat-trunk**. Tracks run concurrently — no track depends on another track's mid-flight state, only on the foundation commit (`fd3eef9`) that landed this scaffolding.
+
+**Working tree convention:** workers `cd /Users/dene/src/github.com/dlf-dds/goat-client` and provision a worktree per track via `/iso enter <track>` (per the file-level master-worktree-readonly invariant codified in goat-trunk's ADR 0013 Amendment 2026-05-09 — same discipline applies here in goat-client). All Edit/Write target the worktree path, never the master goat-client checkout.
 
 **Source of truth — what to fork:** netbird upstream pinned at `3fc5a8d4a1fe308ff1068764a09b90b0859ab8fe`. Local fork at `/Users/dene/src/github.com/dfarrel1/netbird/` (one extra commit `32d04da19` carrying the embed-CA + ServerName-port-strip patch — already adopted in our `client/grpc/` fork target).
 
-**Authoritative design + ADR:** read these FIRST before starting any track:
+**Authoritative design + ADR (in goat-trunk — read by URL OR `cd ~/src/github.com/dlf-dds/DesertBreadBird/ && cat docs/...` to read locally; do not commit there from a goat-client worker session):**
 - `https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/design/goat-client.md`
 - `https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/adr/0840-goat-client-cross-platform-daemon-gui.md`
 
