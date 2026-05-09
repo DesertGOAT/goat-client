@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">goat-client</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="import_bundle">Import bundle</string>
+    <string name="status_unconfigured">No bundle imported</string>
+    <string name="status_imported">Bundle ready · tap Connect</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_error">Error</string>
+    <string name="vpn_channel_name">goat-client tunnel</string>
+    <string name="vpn_channel_description">Persistent notification while the wg-cp0 tunnel is up.</string>
+    <string name="vpn_notification_title">goat-client</string>
+    <string name="vpn_notification_text_connecting">Bringing up wg-cp0 tunnel…</string>
+    <string name="vpn_notification_text_connected">wg-cp0 tunnel up</string>
+</resources>

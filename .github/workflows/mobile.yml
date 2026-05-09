@@ -91,8 +91,14 @@ jobs:
           CGO_ENABLED: "0"
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
         run: |
+          # -androidapi=24 matches mobile/android/Shell/app/build.gradle.kts
+          # minSdk and is required: gomobile auto-detects the NDK's minimum
+          # API level otherwise, which on NDK 26.x defaults to 16 — below
+          # gomobile's supported floor of 21 — causing
+          # "ANDROID_NDK_HOME ... unsupported API version 16 (not in 21..34)".
           PATH=$PATH:$(go env GOPATH) gomobile bind \
             -target=android \
+            -androidapi=24 \
             -javapkg=io.dlf_dds.goat_client.gomobile \
             -ldflags="-checklinkname=0" \
             -o "$GITHUB_WORKSPACE/goat-client.aar" \

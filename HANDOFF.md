@@ -109,7 +109,9 @@
 
 ---
 
-## Track D — Android shell (VpnService + Kotlin)
+## ~~Track D — Android shell (VpnService + Kotlin)~~
+
+> **Status:** PR [#4](https://github.com/dlf-dds/goat-client/pull/4) ready for review (captain). gomobile-bound Go SDK + Kotlin VpnService shell + gradle wrapper authored. Local acceptance verified end-to-end: `gomobile bind` produces 10MB AAR (4 ABIs); `./gradlew :app:assembleDebug` produces 25MB sideloadable APK with `libgojni.so` bundled per ABI. Remaining acceptance — emulator sideload + tunnel-up smoke — gates on operator-side AVD and on Track A's `internal/tunnel` converging (TODO seam at `mobile/android/GoatClientSDK/client_android.go:Run`).
 
 **Track name:** `goat-client-android-shell`
 **Branch:** `track/android-shell`
