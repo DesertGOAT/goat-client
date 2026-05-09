@@ -53,7 +53,7 @@ type Client struct {
 //
 //	c := NewClient(31, "Pixel 8", "0.0.1", vpnSvc, vpnSvc, vpnSvc)
 //	c.ImportBundle(bytesFromPicker)              // one-time, or on bundle rotation
-//	c.Run(platformFiles, dnsList, listener, env) // blocks until Stop()
+//	c.Run(platformFiles, dnsList, listener, envList) // blocks until Stop()
 //
 // The androidSDKVersion arg is a hint to the engine for OS-specific
 // workarounds (e.g. pidfd seccomp policy on API ≤30); see netbird
@@ -148,7 +148,7 @@ func (c *Client) Configure(files PlatformFiles) {
 //   - files: per-app filesystem paths
 //   - dns:   bundle-supplied DNS resolvers (may be empty)
 //   - dnsReadyListener: fires when DNS is in effect
-//   - env:   tunable env vars (force-relay et al)
+//   - envList: tunable env vars (force-relay et al)
 //
 // The engine wires net.SetAndroidProtectSocketFn(tunAdapter.ProtectSocket)
 // during NewClient, so socket protection is live before this call.
@@ -159,7 +159,7 @@ func (c *Client) Configure(files PlatformFiles) {
 // "not yet wired" error so the Kotlin shell can light up the UI
 // flow against the persisted-bundle invariant without depending on
 // Track A's mid-flight state.
-func (c *Client) Run(files PlatformFiles, dns *DNSList, dnsReadyListener DnsReadyListener, env *EnvList) error {
+func (c *Client) Run(files PlatformFiles, dns *DNSList, dnsReadyListener DnsReadyListener, envList *EnvList) error {
 	c.mu.Lock()
 	c.files = files
 	c.state = StateConnecting
@@ -169,7 +169,7 @@ func (c *Client) Run(files PlatformFiles, dns *DNSList, dnsReadyListener DnsRead
 	c.ctxCancel = cancel
 	c.mu.Unlock()
 
-	exportEnv(env)
+	exportEnv(envList)
 
 	if err := c.assertBundlePresent(); err != nil {
 		c.fail(err.Error())
@@ -296,11 +296,11 @@ func (c *Client) fail(reason string) {
 	c.mu.Unlock()
 }
 
-func exportEnv(env *EnvList) {
-	if env == nil {
+func exportEnv(envList *EnvList) {
+	if envList == nil {
 		return
 	}
-	for k, v := range env.snapshot() {
+	for k, v := range envList.snapshot() {
 		_ = os.Setenv(k, v)
 	}
 }

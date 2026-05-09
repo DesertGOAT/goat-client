@@ -30,7 +30,7 @@ object GoatClient {
         instance?.let { return it }
         val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
         val client = Goatclient.newClient(
-            Build.VERSION.SDK_INT,
+            Build.VERSION.SDK_INT.toLong(),  // gomobile maps Go `int` → Java `long`
             deviceName,
             BuildConfigVersion.NAME,
             tunAdapter,                 // TunAdapter
