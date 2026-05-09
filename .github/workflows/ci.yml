@@ -1,0 +1,40 @@
+name: ci
+
+# Tier-A always-fast gate per HANDOFF.md Track E item 4. Runs on every PR
+# and every push to main. Surface: vet, test, build — single ubuntu-latest
+# runner, no cross-compile, no mobile, no integration. The release.yml
+# workflow handles the six-target build matrix + signing.
+#
+# Keep this workflow minimal. Anything heavier (golangci-lint strict
+# config, integration tests, real-protocol smoke) belongs in a sibling
+# workflow that doesn't gate the PR feedback loop.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: vet + test + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 ./...
+      - name: go build
+        run: go build ./...

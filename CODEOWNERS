@@ -1,0 +1,31 @@
+# goat-client CODEOWNERS — scaffold landed by Track E (HANDOFF.md cross-track
+# coordination note: "CODEOWNERS not yet authored (Track E can land it)").
+#
+# Coverage strategy: until per-area maintainers are nominated, every path
+# routes review to the captain (@dlf-dds, the org/account that owns this
+# repo and integrates worker PRs per HANDOFF.md cross-track coordination).
+# Per-track owners can be added as workers land their tracks — replace the
+# catch-all below with track-specific stanzas, or layer them in front:
+#
+#   internal/tunnel/    @dlf-dds @<track-A-worker>
+#   internal/ui/        @dlf-dds @<track-B-worker>
+#   mobile/ios/         @dlf-dds @<track-C-worker>
+#   mobile/android/     @dlf-dds @<track-D-worker>
+#   .github/workflows/  @dlf-dds @<track-E-worker>
+#   packaging/          @dlf-dds @<track-F-worker>
+#
+# Keep CI + CODEOWNERS owned by the same group (Track E owner + captain) —
+# changes here affect every PR's required-review behavior.
+#
+# References:
+#   - https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+#   - HANDOFF.md "Cross-track coordination" section.
+
+# Catch-all: every file routes to the captain until per-area owners exist.
+*                       @dlf-dds
+
+# CI + release pipeline: explicitly Track E + captain. Listed here so the
+# stanza survives if a future maintainer narrows the catch-all.
+.github/                @dlf-dds
+.github/workflows/      @dlf-dds
+CODEOWNERS              @dlf-dds
