@@ -1,0 +1,39 @@
+#!/bin/sh
+# Driven by productbuild's postinstall hook (the .pkg payload installs
+# the .app bundle to /Applications and the daemon binary to
+# /usr/local/bin; this script wires up launchd, log dirs, and a
+# convenience symlink).
+
+set -ex
+
+APP=/Applications/goat-client.app
+LAUNCHD_PLIST=/Library/LaunchDaemons/io.dlf-dds.goat-clientd.plist
+LOG_DIR=/var/log/goat-client
+SUPPORT_DIR="/Library/Application Support/goat-client"
+RUN_DIR=/var/run/goat-client
+
+mkdir -p "$LOG_DIR" "$SUPPORT_DIR" "$RUN_DIR"
+chmod 0755 "$LOG_DIR" "$SUPPORT_DIR" "$RUN_DIR"
+
+# launchd will refuse to load a plist not owned by root:wheel with mode 0644.
+chown root:wheel "$LAUNCHD_PLIST"
+chmod 0644 "$LAUNCHD_PLIST"
+
+# Convenience symlink so operators can `goat-client --version` from any shell.
+if [ -x "$APP/Contents/MacOS/goat-client" ]; then
+    ln -fs "$APP/Contents/MacOS/goat-client" /usr/local/bin/goat-client
+fi
+
+# (Re)load the daemon. bootstrap if first install, kickstart if upgrade.
+if launchctl print system/io.dlf-dds.goat-clientd >/dev/null 2>&1; then
+    launchctl bootout system "$LAUNCHD_PLIST" || true
+fi
+launchctl bootstrap system "$LAUNCHD_PLIST"
+launchctl kickstart -k system/io.dlf-dds.goat-clientd
+
+# Open the GUI on first install (cosmetic; no-op if already running).
+if [ -d "$APP" ]; then
+    /usr/bin/open -a "$APP" || true
+fi
+
+exit 0

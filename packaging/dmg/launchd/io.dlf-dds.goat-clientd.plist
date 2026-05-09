@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    LaunchDaemon for goat-clientd. Loaded into /Library/LaunchDaemons
+    by the .pkg postinstall script (root-owned, runs at boot, no GUI
+    session required).
+
+    The daemon is run as root because it must create utun interfaces
+    and configure routes. It does NOT drop privileges via launchd's
+    UserName key — that would prevent utun creation. The daemon itself
+    uses macOS's standard route + ifconfig syscalls.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.dlf-dds.goat-clientd</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/goat-clientd</string>
+        <string>--bundle-dir=/Library/Application Support/goat-client</string>
+        <string>--ipc-socket=/var/run/goat-client/ipc.sock</string>
+        <string>--log-file=/var/log/goat-client/goat-clientd.log</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/goat-client/goat-clientd.stderr.log</string>
+    <key>StandardOutPath</key>
+    <string>/var/log/goat-client/goat-clientd.stdout.log</string>
+
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+</dict>
+</plist>

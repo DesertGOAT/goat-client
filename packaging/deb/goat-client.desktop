@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=goat-client
+GenericName=goat overlay tunnel
+Comment=Single-tunnel WireGuard client for the goat overlay
+Exec=/usr/bin/goat-client
+Icon=goat-client
+Terminal=false
+Categories=Network;
+StartupNotify=true
+Keywords=vpn;wireguard;tunnel;overlay;
