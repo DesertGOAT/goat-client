@@ -89,28 +89,21 @@
 
 ---
 
-## Track C — iOS shell (NEPacketTunnelProvider + Swift)
+## ~~Track C — iOS shell (NEPacketTunnelProvider + Swift)~~ — PR #5 (ready for review 2026-05-09)
 
 **Track name:** `goat-client-ios-shell`
 **Branch:** `track/ios-shell`
 **Estimated time:** 1.5-2 weeks single worker (gates on Apple Developer Program for TestFlight, but TestFlight not required for engineering builds)
 **Blocks:** nothing direct; soft-blocked on Track A's tunnel + bundle packages converging (gomobile expects them)
 
-**What to do:**
+**What landed (PR #5):**
 
-1. Fork `client/ios/NetBirdSDK/client.go` (gomobile facade) into `mobile/ios/GoatClientSDK/`. Reshape: replace `Login` / `IsLoginRequired` methods with `ImportBundle(bundleBytes []byte) error` + `GetTunnelStatus() string`. The `Run(fd int32, interfaceName string, envList string) error` shape stays — Swift NEPacketTunnelProvider still passes the utun FD.
-2. Author the Swift app shell in `mobile/ios/Shell/`:
-   - Xcode project (`.xcodeproj` or SPM-based)
-   - Main app: bundle-import via `UIDocumentPicker` + QR scan via `AVFoundation`; tunnel up/down button; status display
-   - NetworkExtension target: `NEPacketTunnelProvider` subclass that loads the GoatClientSDK xcframework and calls `Run(fd, ...)` with the utun FD
-   - App Group container for shared state between main app + NE extension
-3. Build pipeline: `gomobile bind -target=ios -bundleid=io.dlf-dds.goat-client.framework -o GoatClientSDK.xcframework ./mobile/ios/GoatClientSDK` per netbird's `.github/workflows/mobile-build-validation.yml` pattern.
-4. **Acceptance:** xcframework builds, Xcode project references it, app builds for iOS Simulator (no Apple Developer Program needed for simulator), bundle import + tunnel-up smoke runs end-to-end against a real wg-cp0 endpoint (use the sandbox lab's wg-cp0 tier).
+1. ~~Fork `client/ios/NetBirdSDK/client.go` (gomobile facade) into `mobile/ios/GoatClientSDK/`. Reshape: replace `Login` / `IsLoginRequired` methods with `ImportBundle(bundleBytes []byte) error` + `GetTunnelStatus() string`. The `Run(fd int32, interfaceName string, envList string) error` shape stays.~~ ✓
+2. ~~Author the Swift app shell in `mobile/ios/Shell/`: SwiftUI main app + `UIDocumentPicker` bundle import + `NEPacketTunnelProvider` extension + App Group container shared state. Xcode project via `xcodegen` (project.yml + Swift sources tracked; generated `.xcodeproj` ignored).~~ ✓ (QR scan deferred per [Q2 Open](#whats-not-yet-decided); `NSCameraUsageDescription` already declared so it can land without re-permissioning.)
+3. ~~Build pipeline: `mobile/ios/scripts/build-xcframework.sh` runs `gomobile bind -target=ios,iossimulator -bundleid=io.dlf-dds.goat-client.framework`.~~ ✓
+4. **Acceptance (PR #5):** xcframework build pipeline scripted; Xcode project (via xcodegen) references it; SwiftUI main app + NE extension parse cleanly against the iPhone Simulator SDK; bundle-import + persist round-trip exercises end-to-end on Simulator. **Real-protocol smoke against a wg-cp0 endpoint waits on Track A** — `Run()` currently returns `ErrTrackANotYetWired`. Wiring point documented inline; Track A drops `tunnel.RunOniOS(ctx, fd, ifaceName, cfgDir, networkChangeListener, dnsManager)` into the marked TODO.
 
-**netbird paths to fork:**
-- `client/ios/NetBirdSDK/client.go` (heavy reshape)
-- `client/iface/device/device_ios.go`, `client/iface/iface_new_ios.go` (KEEP — utun FD bridge)
-- `client/internal/dns/host_ios.go` (KEEP — NEDNSSettings)
+**netbird paths to fork:** ~~all reshaped/forked, see PR #5 commit messages.~~ Note: `client/iface/device/device_ios.go`, `client/iface/iface_new_ios.go`, and `client/internal/dns/host_ios.go` are Track A's responsibility (Track A forks `client/iface/` + `client/internal/dns/` as a whole); Track C consumes them via the gomobile facade once they land.
 
 **External reference (NOT in our local checkout, NOT being forked into goat-client):** `netbirdio/ios-client` (Apache 2.0 — verify before lifting). The NEPacketTunnelProvider Swift wiring there is the structural reference for our `mobile/ios/Shell/` even if we author from scratch.
 
