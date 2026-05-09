@@ -60,12 +60,14 @@
 
 ---
 
-## Track B — Fyne desktop GUI
+## ~~Track B — Fyne desktop GUI~~ — PR #1 ready for review (2026-05-09)
 
 **Track name:** `goat-client-fyne-ui`
 **Branch:** `track/fyne-ui`
 **Estimated time:** 5-7 days single worker
 **Blocks:** nothing direct; soft-blocked on Track A's IPC method set converging (can stub IPC client first)
+
+**Status (2026-05-09):** acceptance met against IPC stub. PR #1 promoted to ready-for-review; awaiting captain integration. Real JSON-RPC transport swaps in once Track A's daemon converges — `internal/ipc/client.go`'s factory is the only seam to update.
 
 **What to do:**
 
