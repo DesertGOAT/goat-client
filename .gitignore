@@ -1,1 +1,129 @@
+# ============================================================================
+# goat-client .gitignore
+# Tuned for Go + Fyne desktop GUI + gomobile (iOS / Android) builds.
+# ============================================================================
+
+# ---- Go build artifacts ---------------------------------------------------
+# Compiled binaries — leave the cmd/ source tree intact, ignore built output.
+/goat-clientd
+/goat-client
+/cmd/goat-clientd/goat-clientd
+/cmd/goat-client/goat-client
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test + coverage artifacts.
+*.test
+*.out
+coverage.txt
+coverage.html
+profile.cov
+
+# Go workspace + tooling state.
+go.work
+go.work.sum
+vendor/
+bin/
+dist/
+
+# ---- Fyne desktop GUI builds ---------------------------------------------
+# `fyne package` outputs.
+*.app/
+*.appimage
+*.AppImage
+fyne-cross/
+
+# Auto-generated bundled assets if `fyne bundle` is used directly.
+bundled.go
+
+# ---- gomobile (iOS + Android) outputs ------------------------------------
+# `gomobile bind -target=ios` produces an .xcframework directory.
+*.xcframework/
+mobile/ios/**/*.xcframework/
+
+# `gomobile bind -target=android` produces .aar (+ matching -sources.jar).
+*.aar
+*-sources.jar
+mobile/android/**/*.aar
+
+# Xcode user state inside the iOS shell project.
+mobile/ios/Shell/**/xcuserdata/
+mobile/ios/Shell/**/*.xcuserstate
+mobile/ios/Shell/**/DerivedData/
+mobile/ios/Shell/**/Pods/
+
+# Android Studio / Gradle state inside the Android shell project.
+mobile/android/Shell/.gradle/
+mobile/android/Shell/build/
+mobile/android/Shell/**/build/
+mobile/android/Shell/local.properties
+mobile/android/Shell/.idea/
+mobile/android/Shell/captures/
+mobile/android/Shell/.cxx/
+
+# ---- Per-platform packaging build outputs ---------------------------------
+# Track F outputs — keep manifests under packaging/<fmt>/ but ignore builds.
+packaging/deb/build/
+packaging/rpm/build/
+packaging/rpm/RPMS/
+packaging/rpm/SRPMS/
+packaging/dmg/build/
+packaging/dmg/*.dmg
+packaging/msi/build/
+packaging/msi/*.msi
+packaging/**/*.deb
+packaging/**/*.rpm
+
+# ---- Release-pipeline staging --------------------------------------------
+# Track E's release.yml stages signed binaries here in CI; locals shouldn't
+# be checking these in.
+release/
+*.sha256
+SHA256SUMS
+*.cert
+*.sig
+*.bundle.json
+# (Leave the CBOR bundle test fixtures alone — those go under testdata/.)
+
+# ---- iso-mode + Claude Code worktree state -------------------------------
+# Per HANDOFF.md, parallel-track work uses .claude/worktrees/<track>/ off
+# main; the per-track env file may carry session-scoped paths.
 .iso-mode.env
+.claude/worktrees/
+.claude/local/
+.claude/settings.local.json
+
+# ---- IDE state -----------------------------------------------------------
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+.history/
+
+# ---- OS noise ------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Secrets + local config ----------------------------------------------
+# Belt-and-suspenders. Never commit private keys, env files, or secret
+# stashes. (Bundle test fixtures should be CBOR + .test.cbor named so they
+# don't accidentally match these patterns.)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.age
+secrets/
