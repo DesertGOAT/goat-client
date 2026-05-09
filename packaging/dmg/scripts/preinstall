@@ -1,0 +1,15 @@
+#!/bin/sh
+# Stops a running daemon before the new payload lands. No-op on fresh install.
+set -e
+
+LAUNCHD_PLIST=/Library/LaunchDaemons/io.dlf-dds.goat-clientd.plist
+LABEL=io.dlf-dds.goat-clientd
+
+if launchctl print system/$LABEL >/dev/null 2>&1; then
+    launchctl bootout system "$LAUNCHD_PLIST" || true
+fi
+
+# Quit GUI if running so the file replace can happen.
+osascript -e 'tell application "goat-client" to quit' 2>/dev/null || true
+
+exit 0

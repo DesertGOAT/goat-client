@@ -109,7 +109,9 @@
 
 ---
 
-## Track D — Android shell (VpnService + Kotlin)
+## ~~Track D — Android shell (VpnService + Kotlin)~~
+
+> **Status:** PR [#4](https://github.com/dlf-dds/goat-client/pull/4) ready for review (captain). gomobile-bound Go SDK + Kotlin VpnService shell + gradle wrapper authored. Local acceptance verified end-to-end: `gomobile bind` produces 10MB AAR (4 ABIs); `./gradlew :app:assembleDebug` produces 25MB sideloadable APK with `libgojni.so` bundled per ABI. Remaining acceptance — emulator sideload + tunnel-up smoke — gates on operator-side AVD and on Track A's `internal/tunnel` converging (TODO seam at `mobile/android/GoatClientSDK/client_android.go:Run`).
 
 **Track name:** `goat-client-android-shell`
 **Branch:** `track/android-shell`
@@ -155,12 +157,13 @@
 
 ---
 
-## Track F — per-platform desktop packaging
+## ~~Track F — per-platform desktop packaging~~ — PR #12 ready for review
 
 **Track name:** `goat-client-packaging`
 **Branch:** `track/packaging`
 **Estimated time:** 3-5 days single worker
 **Blocks:** soft-blocked on Track A (need a real binary to package); can author packaging skeletons immediately
+**Status (2026-05-09):** skeleton landed in PR #12 — `packaging/{deb,rpm,dmg,msi}/` + driver scripts + README. nfpm v2 deb/rpm + WiX v4 msi + NSIS fallback + pkgbuild/hdiutil dmg all syntactically validated locally. End-to-end install/uninstall round-trip gated on Track A producing real binaries and Track E wiring a `package` job into release.yml; both tracked as cross-track follow-ups in the PR description.
 
 **What to do:**
 

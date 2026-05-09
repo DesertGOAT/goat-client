@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Bundle identity -->
+    <key>CFBundleName</key>
+    <string>goat-client</string>
+    <key>CFBundleDisplayName</key>
+    <string>goat-client</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.dlf-dds.goat-client</string>
+    <key>CFBundleVersion</key>
+    <string>${VERSION}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${VERSION}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <!-- Executable + icon (Fyne GUI binary; built by Track B) -->
+    <key>CFBundleExecutable</key>
+    <string>goat-client</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
+
+    <!-- Minimum macOS — Fyne v2 requires 10.13+; pick 11 for Apple Silicon hygiene -->
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+
+    <!-- Background-only is FALSE: we want the GUI in the menu bar / Dock.
+         The systray-only mode is handled at runtime, not via LSUIElement,
+         so the user can show/hide the main window. -->
+    <key>LSUIElement</key>
+    <false/>
+
+    <!-- Run at login by default? No — operator opts in via the GUI. -->
+    <key>LSBackgroundOnly</key>
+    <false/>
+
+    <!-- Document type / URL scheme for bundle import:
+         Drag-drop a .gcbundle file onto the app icon, OR open via
+         goat-client://import?... URL (Track B implements the handler). -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>goat-client enrollment bundle</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>gcbundle</string>
+            </array>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+        </dict>
+    </array>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.dlf-dds.goat-client.bundle</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>goat-client</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Hardened-runtime + notarization preflight: filled in at sign
+         time by codesign / notarytool. Engineering builds ship without
+         either; stable release requires the operator-fired Apple
+         Developer Program procurement. -->
+    <key>NSHumanReadableCopyright</key>
+    <string>© dlf-dds. BSD-3-Clause.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
