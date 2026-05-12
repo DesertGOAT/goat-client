@@ -44,9 +44,19 @@ final class TunnelManager: ObservableObject {
             attachStatusObserver()
             updateStatusFromConnection()
         } catch {
-            self.lastErrorText = "Failed to load NE configuration: \(error.localizedDescription)"
-            self.status = .error
-            self.statusText = "error"
+            // loadAllFromPreferences fails on iOS Simulator without proper
+            // code signing — the system's `neagent` xpc daemon refuses
+            // unsigned-app NE configuration access with "IPC failed".
+            // Treat as "no existing config" rather than a hard error so
+            // the bundle-import flow remains exercisable on Simulator;
+            // diagnostic message is preserved in lastErrorText. A
+            // subsequent Connect attempt will surface a more specific
+            // failure if the system genuinely can't host the
+            // NEPacketTunnelProvider (real device + signed build clears
+            // this entire path).
+            self.lastErrorText = "NE config load deferred: \(error.localizedDescription) — Simulator without code-sign typically. Bundle import still works; Connect may not."
+            self.status = .disconnected
+            self.statusText = "disconnected"
         }
     }
 
