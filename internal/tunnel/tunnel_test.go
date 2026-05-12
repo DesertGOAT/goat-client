@@ -46,7 +46,7 @@ func TestFromBundle_HappyPath(t *testing.T) {
 	}
 }
 
-func TestFromBundle_AllowedIPsOverride(t *testing.T) {
+func TestFromBundle_AllowedIPsAdditive(t *testing.T) {
 	priv := make([]byte, 32)
 	pub := make([]byte, 32)
 	relayKey := make([]byte, 32)
@@ -63,8 +63,16 @@ func TestFromBundle_AllowedIPsOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromBundle: %v", err)
 	}
-	if len(cfg.Peer.AllowedIPs) != 1 || cfg.Peer.AllowedIPs[0].String() != "198.18.0.0/24" {
-		t.Errorf("AllowedIPs override not applied: %v", cfg.Peer.AllowedIPs)
+	// Matches the canonical wg-cp0-bundle-apply renderer:
+	// AllowedIPs = MeshAddr/32 first, then bundle.AllowedIPs entries.
+	want := []string{"198.18.0.1/32", "198.18.0.0/24"}
+	if len(cfg.Peer.AllowedIPs) != len(want) {
+		t.Fatalf("AllowedIPs length: got %d want %d (%v)", len(cfg.Peer.AllowedIPs), len(want), cfg.Peer.AllowedIPs)
+	}
+	for i, w := range want {
+		if cfg.Peer.AllowedIPs[i].String() != w {
+			t.Errorf("AllowedIPs[%d]: got %q want %q", i, cfg.Peer.AllowedIPs[i].String(), w)
+		}
 	}
 }
 

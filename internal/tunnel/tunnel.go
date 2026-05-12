@@ -317,21 +317,25 @@ func FromBundle(b *bundle.EnrollmentBundle) (Config, error) {
 		if e.Kind != bundle.KindRelay {
 			continue
 		}
+		// Additive semantics, matching the canonical wg-cp0-bundle-apply
+		// renderer: MeshAddr/32 first (when present), then any
+		// bundle-side AllowedIPs entries (the --first-relay-route-subnet
+		// extras). A relay with MeshAddr 198.18.0.3 + AllowedIPs
+		// ["198.18.0.0/24"] yields ["198.18.0.3/32", "198.18.0.0/24"].
 		var allowed []netip.Prefix
-		if len(e.AllowedIPs) > 0 {
-			for _, s := range e.AllowedIPs {
-				p, err := netip.ParsePrefix(s)
-				if err != nil {
-					return Config{}, fmt.Errorf("tunnel: parse allowed_ips %q: %w", s, err)
-				}
-				allowed = append(allowed, p)
-			}
-		} else if e.MeshAddr != "" {
+		if e.MeshAddr != "" {
 			ip, err := netip.ParseAddr(e.MeshAddr)
 			if err != nil {
 				return Config{}, fmt.Errorf("tunnel: parse mesh_addr %q: %w", e.MeshAddr, err)
 			}
-			allowed = []netip.Prefix{netip.PrefixFrom(ip, ip.BitLen())}
+			allowed = append(allowed, netip.PrefixFrom(ip, ip.BitLen()))
+		}
+		for _, s := range e.AllowedIPs {
+			p, err := netip.ParsePrefix(s)
+			if err != nil {
+				return Config{}, fmt.Errorf("tunnel: parse allowed_ips %q: %w", s, err)
+			}
+			allowed = append(allowed, p)
 		}
 		return Config{
 			InterfaceName: DefaultInterfaceName,

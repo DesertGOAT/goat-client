@@ -68,14 +68,17 @@ type KnownEndpoint struct {
 
 	// MeshAddr is the peer's wg-cp0 mesh-side address (no CIDR; e.g.
 	// "198.18.0.2"). Optional, populated only for cp-relay endpoints —
-	// the wg-cp0 conf renderer derives AllowedIPs = MeshAddr/32 from
-	// this when AllowedIPs (below) is empty.
+	// the wg-cp0 conf renderer always derives `MeshAddr/32` as the
+	// first AllowedIPs entry from this.
 	MeshAddr string `cbor:"mesh_addr,omitempty"`
 
-	// AllowedIPs, when non-empty, OVERRIDES the default `MeshAddr/32`
-	// derivation in the wg-cp0 conf renderer for this endpoint's [Peer]
-	// block. Each entry is a CIDR string. Bundle-issuance side populates
-	// this from the operator flag --first-relay-route-subnet.
+	// AllowedIPs, when non-empty, are ADDED to the renderer's derived
+	// `MeshAddr/32` entry (additive, not overriding). Each entry is a
+	// CIDR string. Bundle-issuance side populates this from the
+	// operator flag --first-relay-route-subnet. Matches the canonical
+	// `wg-cp0-bundle-apply` renderer: a relay peer with MeshAddr
+	// 198.18.0.3 and AllowedIPs ["198.18.0.0/24"] renders to
+	// `AllowedIPs = 198.18.0.3/32, 198.18.0.0/24`.
 	AllowedIPs []string `cbor:"allowed_ips,omitempty"`
 }
 
