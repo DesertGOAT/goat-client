@@ -1,0 +1,231 @@
+name: nightly-realprotocol
+
+# Track G item 3 — real-protocol smoke against the live wg-cp0 endpoint
+# in the goat sandbox lab. Sibling to integration.yml (Tier-A IPC
+# contract, always-runs) and ci.yml (always-fast vet/test/build). This
+# is the Tier-B job: live network, requires lab credentials.
+#
+# Triggers (validation-window posture, per #15 + #20):
+#   - workflow_dispatch only. Schedule + path-filtered PR triggers are
+#     intentionally absent during the prod-access window
+#     (2026-05-10 → 2026-05-17, sunset per #20). Re-introduce schedule +
+#     PR coverage in a follow-up once cartoon-peer probe endpoints +
+#     secrets are landed.
+#
+# Required repo secrets (operator-provisioned; see
+# tests/integration/README.md for the lab-endpoint contract):
+#
+#   LAB_BUNDLE_B64        base64-encoded CBOR EnrollmentBundle, signed
+#                         by the prod offline-CA, valid for a wg-cp0
+#                         endpoint reachable from GitHub-hosted runners
+#   LAB_TRUST_ROOTS_B64   base64-encoded PEM with the Ed25519 pubkey
+#                         that signed the bundle (prod CA pubkey)
+#   LAB_TARGET_IP         mesh IP of a cartoon-peer probe endpoint
+#                         reachable through the wg-cp0 tunnel; the
+#                         test TCP-connects to confirm tunnel data-plane
+#                         reachability, not just handshake completion
+#
+# When any of the three is unset, the test self-skips (see
+# realprotocol_test.go) and the job goes green.
+#
+# Failure notification: a tracking issue labeled
+# `nightly-realprotocol-failure` is opened on first failure of a
+# workflow_dispatch run and updated with each subsequent failure run;
+# the next green run closes it.
+#
+# Failure-signal discrimination (per #15):
+#   - Test tags each error path `[phase=<import|connect|handshake|probe>]`.
+#   - Test retries once after 60s on first failure (gives the daemon a
+#     chance to cycle through additional bundle KnownEndpoints if the
+#     first selection was unreachable).
+#   - The "phase summary" step extracts the latest [phase=...] tag from
+#     the test log and writes it to $GITHUB_STEP_SUMMARY.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  realprotocol-smoke:
+    name: realprotocol smoke (Tier-B — live wg-cp0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Stage lab credentials
+        id: stage
+        env:
+          LAB_BUNDLE_B64: ${{ secrets.LAB_BUNDLE_B64 }}
+          LAB_TRUST_ROOTS_B64: ${{ secrets.LAB_TRUST_ROOTS_B64 }}
+          LAB_TARGET_IP: ${{ secrets.LAB_TARGET_IP }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${LAB_BUNDLE_B64:-}" || -z "${LAB_TRUST_ROOTS_B64:-}" || -z "${LAB_TARGET_IP:-}" ]]; then
+            echo "::notice::LAB_BUNDLE_B64 / LAB_TRUST_ROOTS_B64 / LAB_TARGET_IP not all configured; realprotocol test will self-skip"
+            {
+              echo "bundle_path="
+              echo "trust_path="
+              echo "target_ip="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tmp="$(mktemp -d)"
+          printf '%s' "$LAB_BUNDLE_B64" | base64 --decode > "$tmp/bundle.cbor"
+          printf '%s' "$LAB_TRUST_ROOTS_B64" | base64 --decode > "$tmp/trust-roots.pem"
+          chmod 0600 "$tmp/bundle.cbor" "$tmp/trust-roots.pem"
+          {
+            echo "bundle_path=$tmp/bundle.cbor"
+            echo "trust_path=$tmp/trust-roots.pem"
+            echo "target_ip=$LAB_TARGET_IP"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: go test -tags=realprotocol
+        id: gotest
+        env:
+          GOAT_LAB_BUNDLE_PATH: ${{ steps.stage.outputs.bundle_path }}
+          GOAT_LAB_TRUST_ROOTS_PATH: ${{ steps.stage.outputs.trust_path }}
+          GOAT_LAB_TARGET_IP: ${{ steps.stage.outputs.target_ip }}
+          # Probe kwt-aj-A's Traefik on 443 (per captain comment on #16,
+          # 2026-05-11). Test default is 80; LAB_TARGET_IP=198.18.0.1
+          # routes through the wg-cp0 tunnel to a live Traefik listener.
+          GOAT_LAB_PROBE_PORT: "443"
+          # CGO disabled to match Track A's daemon build; the test
+          # harness rebuilds cmd/goat-clientd on the runner.
+          CGO_ENABLED: "0"
+        run: |
+          set -o pipefail
+          # TUN device creation requires CAP_NET_ADMIN. GitHub-hosted
+          # runners run the workflow user as non-root; without sudo the
+          # daemon subprocess's `tun.CreateTUN` returns EPERM (surfaces
+          # as `[phase=connect] create TUN wg-cp0: operation not
+          # permitted`). The test harness spawns the daemon, so the
+          # whole `go test` invocation runs under sudo. --preserve-env
+          # carries the secrets-injected env vars + the setup-go PATH
+          # so `go` and the runner-managed module cache resolve.
+          sudo --preserve-env=PATH,GOPATH,GOAT_LAB_BUNDLE_PATH,GOAT_LAB_TRUST_ROOTS_PATH,GOAT_LAB_TARGET_IP,GOAT_LAB_PROBE_PORT,CGO_ENABLED \
+            go test -tags=realprotocol -count=1 -v -timeout 8m ./tests/integration/... 2>&1 | tee /tmp/realprotocol.log
+
+      - name: Phase summary
+        if: ${{ always() }}
+        env:
+          STAGE_BUNDLE_PATH: ${{ steps.stage.outputs.bundle_path }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## realprotocol smoke"
+            echo ""
+            if [[ -z "${STAGE_BUNDLE_PATH:-}" ]]; then
+              echo "Result: **skipped** (one or more required secrets unset)."
+              exit 0
+            fi
+            outcome="${{ steps.gotest.outcome }}"
+            echo "Result: **$outcome**"
+            echo ""
+            if [[ -f /tmp/realprotocol.log ]]; then
+              # Last [phase=...] tag in the log identifies which leg broke
+              # (or the last successful phase, if the run was green).
+              phase="$(grep -oE '\[phase=[a-z]+\]' /tmp/realprotocol.log | tail -1 | tr -d '[]' | cut -d= -f2 || true)"
+              if [[ -n "$phase" ]]; then
+                echo "Last phase tag: \`$phase\`"
+                echo ""
+              fi
+              echo "Phase guide:"
+              echo "- \`import\` — bundle parse / signature verify; usually CA mismatch or expired bundle."
+              echo "- \`connect\` — IPC Connect to daemon; daemon-internal."
+              echo "- \`handshake\` — wg handshake didn't complete in time; endpoint unreachable, allowlist not pushed to relay, pubkey mismatch, or NAT/UDP-egress issue from runner."
+              echo "- \`probe\` — handshake OK but TCP-connect to LAB_TARGET_IP via wg-cp0 failed; routing, AllowedIPs, or peer-side listener missing."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    name: open or update failure issue
+    needs: realprotocol-smoke
+    if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          LABEL="nightly-realprotocol-failure"
+
+          # Idempotent label create; ignores 'already exists'.
+          gh label create "$LABEL" \
+            --description "nightly real-protocol smoke is red" \
+            --color "B60205" >/dev/null 2>&1 || true
+
+          existing="$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')"
+          ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          if [[ -n "${existing:-}" ]]; then
+            gh issue comment "$existing" \
+              --body "Nightly realprotocol smoke failed again at $ts (run #$RUN_NUMBER): $RUN_URL"
+          else
+            body="$(cat <<EOF
+          The nightly realprotocol smoke against the lab wg-cp0 endpoint failed.
+
+          - First observed: $ts (run #$RUN_NUMBER)
+          - Run: $RUN_URL
+
+          Check the run's job summary for the \`[phase=...]\` tag — it
+          identifies which leg of the smoke broke. Triage starts there.
+
+          While this issue is open, each subsequent failure will append a
+          comment here. The next green run on \`workflow_dispatch\` will
+          close this issue automatically.
+
+          See \`tests/integration/README.md\` for the lab-endpoint
+          contract and the secret-rotation runbook.
+          EOF
+          )"
+            gh issue create \
+              --label "$LABEL" \
+              --title "Nightly realprotocol smoke failing (since $ts)" \
+              --body "$body"
+          fi
+
+  notify-recovery:
+    name: close failure issue on green
+    needs: realprotocol-smoke
+    if: ${{ success() && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close tracking issue on green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          LABEL="nightly-realprotocol-failure"
+          existing="$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing:-}" ]]; then
+            ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            gh issue comment "$existing" \
+              --body "Nightly realprotocol smoke recovered at $ts (run #$RUN_NUMBER): $RUN_URL — closing."
+            gh issue close "$existing"
+          else
+            echo "no open failure issue to close"
+          fi
