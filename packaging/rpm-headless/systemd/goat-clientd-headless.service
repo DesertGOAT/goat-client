@@ -1,5 +1,5 @@
 [Unit]
-Description=goat-client tunnel daemon
+Description=goat-client tunnel daemon (headless)
 Documentation=https://github.com/dlf-dds/goat-client
 After=network-online.target
 Wants=network-online.target
@@ -7,8 +7,9 @@ Wants=network-online.target
 [Service]
 Type=notify
 NotifyAccess=main
-EnvironmentFile=-/etc/sysconfig/goat-client
+EnvironmentFile=-/etc/sysconfig/goat-client-headless
 ExecStart=/usr/bin/goat-clientd \
+    --headless \
     --bundle-dir=/var/lib/goat-client \
     --ipc-socket=/run/goat-client/ipc.sock \
     --log-file=/var/log/goat-client/goat-clientd.log \

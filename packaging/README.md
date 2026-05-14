@@ -2,12 +2,14 @@
 
 Per-platform packagers for the goat-client desktop binaries:
 
-| Dir       | Format    | Daemon launcher          | GUI launcher                     | Build tool         |
-|-----------|-----------|--------------------------|----------------------------------|--------------------|
-| `deb/`    | `.deb`    | systemd unit             | XDG `.desktop` + icon            | `nfpm`             |
-| `rpm/`    | `.rpm`    | systemd unit             | XDG `.desktop` + icon            | `nfpm`             |
-| `dmg/`    | `.dmg` + nested `.pkg` | launchd `LaunchDaemon` | `.app` bundle in `/Applications` | `pkgbuild`+`hdiutil` |
-| `msi/`    | `.msi` (WiX), `.exe` (NSIS fallback) | Windows Service | Start Menu + Desktop shortcuts | `wix` (v4) or `makensis` |
+| Dir              | Format    | Daemon launcher                                              | GUI launcher                     | Build tool         |
+|------------------|-----------|--------------------------------------------------------------|----------------------------------|--------------------|
+| `deb/`           | `.deb`    | systemd `goat-clientd.service`                               | XDG `.desktop` + icon            | `nfpm`             |
+| `rpm/`           | `.rpm`    | systemd `goat-clientd.service`                               | XDG `.desktop` + icon            | `nfpm`             |
+| `dmg/`           | `.dmg` + nested `.pkg`                              | launchd `LaunchDaemon`            | `.app` bundle in `/Applications` | `pkgbuild`+`hdiutil` |
+| `msi/`           | `.msi` (WiX), `.exe` (NSIS fallback) | Windows Service                                            | Start Menu + Desktop shortcuts | `wix` (v4) or `makensis` |
+| `deb-headless/`  | `.deb`    | systemd `goat-clientd-headless.service` (v0.2 Block 76P)     | — (daemon only)                  | `nfpm`             |
+| `rpm-headless/`  | `.rpm`    | systemd `goat-clientd-headless.service` (v0.2 Block 76P)     | — (daemon only)                  | `nfpm`             |
 
 All four assume Track A's `cmd/goat-clientd` (system daemon) and Track B's
 `cmd/goat-client` (Fyne GUI) are built and dropped under `dist/<goos>_<goarch>/`
@@ -31,6 +33,22 @@ Same logical layout across platforms — only the path conventions differ:
 The daemon listens on the IPC socket / pipe; the GUI talks to it via JSON-RPC.
 Track A defines the IPC method set.
 
+## v0.2 mode selection at install time
+
+goat-client v0.2 supports three modes (wg-cp0-only / netbird-only /
+combined). The mode is persisted to a small `config.toml` that the
+daemon reads on start-up; each packager has a way to seed it at install:
+
+| Format | Mode argument | Persisted at |
+|--------|---------------|--------------|
+| deb    | `GOAT_MODE=combined apt install ./goat-client_*.deb` (or edit `/etc/default/goat-client`, then reinstall) | `/etc/goat-client/config.toml` |
+| rpm    | `GOAT_MODE=combined dnf install goat-client-*.rpm` (or edit `/etc/sysconfig/goat-client`, then reinstall) | `/etc/goat-client/config.toml` |
+| dmg    | `sudo installer -pkg goat-client.pkg -target / GOAT_MODE=combined` (env passed through to postinstall) | `/Library/Application Support/goat-client/config.toml` |
+| msi    | `msiexec /qn /i goat-client.msi GOATMODE=combined` | `%ProgramData%\goat-client\config.toml` |
+
+The default if no mode is specified is `combined`. Operators can switch
+modes at runtime without reinstalling via `goat-client setmode <mode>`.
+
 ## Driving each packager
 
 ### deb / rpm — `nfpm` (linux)
@@ -42,9 +60,17 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
     go build -trimpath -buildvcs=false -o dist/linux_amd64/goat-client  ./cmd/goat-client
 
+# For the headless package, build the daemon a second time with the
+# headless build tag and drop into dist/linux_${GOARCH}-headless/.
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+    go build -tags headless -trimpath -buildvcs=false \
+    -o dist/linux_amd64-headless/goat-clientd ./cmd/goat-clientd
+
 # Then package.
 GOARCH=amd64 VERSION=0.0.1 packaging/build-linux-pkg.sh deb
 GOARCH=amd64 VERSION=0.0.1 packaging/build-linux-pkg.sh rpm
+GOARCH=amd64 VERSION=0.0.1 packaging/build-linux-pkg.sh deb-headless
+GOARCH=amd64 VERSION=0.0.1 packaging/build-linux-pkg.sh rpm-headless
 ```
 
 The wrapper envsubst's `${GOARCH}` / `${VERSION}` into the nfpm YAML before
