@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="internal/ui/assets/goat-logo.svg" alt="goat" width="360">
+</p>
+
 # goat-client
 
 Cross-platform daemon + GUI for goat **wg-cp0 silent control plane** onboarding.
