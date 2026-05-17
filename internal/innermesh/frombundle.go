@@ -28,6 +28,15 @@ var ErrBundleMissingInnerMeshSetup = errors.New("innermesh: bundle missing inner
 // source bundle's slices — load-bearing when the bundle is persisted
 // across daemon restarts and the Config is reconfigured at runtime.
 //
+// BundleDeviceID is set from b.DeviceID — the operator-assigned
+// device label. The Mesh impl composes it with the device-reported
+// deviceID (NewNetbird arg) at Connect-time to form
+// embed.Options.DeviceName, so an operator who minted a bundle for
+// "ops-laptop-04" sees "ops-laptop-04 (Dene's iPhone)" in the
+// netbird mgmt UI when the device registers. Empty b.DeviceID is
+// preserved verbatim — the composition collapses to just the
+// device-reported half.
+//
 // PreferKernelWG is left zero — the 76N implementation is
 // userspace-WG only per ADR 0840 amendment 2026-05-13. The field
 // stays on Config for forward compatibility with a future kernel-WG
@@ -43,6 +52,7 @@ func FromBundle(b *bundle.EnrollmentBundle) (Config, error) {
 		ManagementURL:    b.InnerMeshSetup.ManagementURL,
 		SetupKey:         b.InnerMeshSetup.SetupKey,
 		AdminAccessToken: b.InnerMeshSetup.AdminAccessToken,
+		BundleDeviceID:   b.DeviceID,
 	}
 	if len(b.InnerMeshSetup.PreSharedKey) > 0 {
 		c.PreSharedKey = append([]byte(nil), b.InnerMeshSetup.PreSharedKey...)
