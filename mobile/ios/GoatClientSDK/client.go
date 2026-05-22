@@ -244,7 +244,7 @@ func (c *Client) Run(fd int32, interfaceName string, envList *EnvList) error {
 			c.stateAtomic.Store(StateError)
 			return fmt.Errorf("inner mesh config from bundle: %w", err)
 		}
-		mesh := innermesh.New()
+		mesh := innermesh.NewWithDeviceID(c.deviceName)
 		if err := mesh.Configure(imCfg); err != nil {
 			c.stateAtomic.Store(StateError)
 			_ = mesh.Close()

@@ -246,7 +246,7 @@ func (c *Client) Run(files PlatformFiles, dns *DNSList, dnsReadyListener DnsRead
 			c.fail(err.Error())
 			return fmt.Errorf("inner mesh config from bundle: %w", err)
 		}
-		mesh := innermesh.New()
+		mesh := innermesh.NewWithDeviceID(c.deviceName)
 		if err := mesh.Configure(imCfg); err != nil {
 			c.fail(err.Error())
 			_ = mesh.Close()

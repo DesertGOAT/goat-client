@@ -106,8 +106,15 @@ func (n *Netbird) Connect(ctx context.Context) error {
 	if len(cfg.PreSharedKey) > 0 {
 		psk = string(cfg.PreSharedKey)
 	}
+	// Compose the wire-side DeviceName from the operator-assigned bundle
+	// DeviceID (cfg.BundleDeviceID, populated by FromBundle from
+	// b.DeviceID) and the device-reported deviceID (n.deviceID). The
+	// composed string arrives server-side as peer.Meta.Hostname and
+	// feeds the {hostname} substitution in the SetupKey's
+	// AutoPeerNameTemplate (dfarrel1/netbird c33517a5).
+	deviceName := composeIdentity(cfg.BundleDeviceID, n.deviceID)
 	client, err := netbird.New(netbird.Options{
-		DeviceName:    n.deviceID,
+		DeviceName:    deviceName,
 		SetupKey:      cfg.SetupKey,
 		ManagementURL: cfg.ManagementURL,
 		PreSharedKey:  psk,
