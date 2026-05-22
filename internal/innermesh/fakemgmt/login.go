@@ -42,6 +42,15 @@ func (s *Server) Login(_ context.Context, msg *mgmtproto.EncryptedMessage) (*mgm
 		return nil, status.Errorf(codes.InvalidArgument, "fakemgmt: decrypt LoginRequest: %v", err)
 	}
 
+	// Stash the decrypted request so tests can assert wire-side
+	// observations (e.g. Meta.Hostname). Take the lock briefly — the
+	// embed client's connect loop and the test goroutine both touch
+	// the server.
+	s.mu.Lock()
+	loginCopy := req
+	s.lastLogin = &loginCopy
+	s.mu.Unlock()
+
 	resp := &mgmtproto.LoginResponse{
 		PeerConfig:    s.peerConfig(),
 		NetbirdConfig: s.netbirdConfig(),

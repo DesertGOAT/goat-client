@@ -41,6 +41,24 @@ type Server struct {
 	listener net.Listener
 	addr     string
 	stopped  bool
+
+	// lastLogin holds the most recent successfully-decrypted
+	// LoginRequest. Tests inspect this to confirm what the client
+	// sent on the wire — most notably Meta.Hostname, which is the
+	// field netbird's mgmt-UI renders as the peer name and which
+	// carries the composed bundle DeviceID + device-reported
+	// identity from innermesh.composeIdentity.
+	lastLogin *mgmtproto.LoginRequest
+}
+
+// LastLogin returns the most recent successfully-decrypted
+// LoginRequest seen by Login, or nil if no Login has succeeded yet.
+// Mutex-protected so callers can poll concurrently with the embed
+// client driving Login on its connect goroutine.
+func (s *Server) LastLogin() *mgmtproto.LoginRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastLogin
 }
 
 // Option configures a Server at construction. Use WithSignalURI to
