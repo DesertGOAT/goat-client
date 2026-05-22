@@ -37,8 +37,12 @@ func (s *Server) Login(_ context.Context, msg *mgmtproto.EncryptedMessage) (*mgm
 		return nil, status.Errorf(codes.InvalidArgument, "fakemgmt: parse client wgPubKey: %v", err)
 	}
 
-	var req mgmtproto.LoginRequest
-	if err := encryption.DecryptMessage(clientPubKey, s.wgKey, msg.GetBody(), &req); err != nil {
+	// Allocate on the heap so we can stash the pointer directly in
+	// s.lastLogin without a value-copy — proto messages embed
+	// protoimpl.MessageState (sync.Mutex) and `go vet` rightly flags
+	// "assignment copies lock value" on a value-copy of LoginRequest.
+	req := &mgmtproto.LoginRequest{}
+	if err := encryption.DecryptMessage(clientPubKey, s.wgKey, msg.GetBody(), req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "fakemgmt: decrypt LoginRequest: %v", err)
 	}
 
@@ -47,8 +51,7 @@ func (s *Server) Login(_ context.Context, msg *mgmtproto.EncryptedMessage) (*mgm
 	// embed client's connect loop and the test goroutine both touch
 	// the server.
 	s.mu.Lock()
-	loginCopy := req
-	s.lastLogin = &loginCopy
+	s.lastLogin = req
 	s.mu.Unlock()
 
 	resp := &mgmtproto.LoginResponse{
