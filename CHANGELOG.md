@@ -8,9 +8,298 @@ with the `goat-client-` tag prefix described in [`CONTRIBUTING.md`](CONTRIBUTING
 
 ## [Unreleased]
 
-See [`HANDOFF.md → v0.1.1 follow-ups`](HANDOFF.md#v011-follow-ups) — Apple
-Developer ID + Authenticode procurement remains as the last v0.1.x backlog
-item (operator-fired, not a coding track). GAP #2 + #3 closed in v0.1.2.
+No work in flight beyond v0.2.0. See the section below for the v0.2.0
+draft entry; the release tag fires after verdict-gate items (b)/(c)/(e)/(g)
+clear per [`docs/operations/v0.2-verdict-gate-playbook.md`](docs/operations/v0.2-verdict-gate-playbook.md).
+
+## [0.2.0] — UNRELEASED
+
+The **three-mode triad release.** Generalises goat-client from
+v0.1.x's single-tunnel posture (wg-cp0 only) to **three operating
+modes across every platform class**: `wg-cp0-only` (the v0.1.x
+regression bar), `netbird-only` (inner mesh only, via Block 80 crutch
+tier once it stands up), `combined` (both tunnels in one process).
+The mode is operator-pickable at install time on desktop + headless,
+end-user-pickable at runtime in the Fyne GUI + iOS + Android shells.
+Per [ADR 0840 Amendment 2026-05-13](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/adr/0840-goat-client-cross-platform-daemon-gui.md)
+and [implementation-plan Block 76N–Q](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/project/implementation-plan.md#block-76).
+
+Inner-mesh traffic is real for the first time in goat-client: the
+vendored netbird-as-library un-strip (PR #41 / #43 / #50) lands a
+genuine `*Netbird` implementation behind `innermesh.New()` rather
+than the no-op `Fake` that shipped in v0.1.x. `combined` and
+`netbird-only` modes now drive actual inner-mesh peer reach end-to-
+end, gated only on the operator running the three-real-device smoke
+that closes verdict-gate items (b) + (c) and the operator-fired
+TestFlight + Play Internal submissions that close (g).
+
+### Added
+
+- **Three-mode triad — desktop + headless.** `internal/mode/`
+  defines `WGCP0Only` / `NetbirdOnly` / `Combined` with `Combined`
+  as the default for fresh installs. Fyne mode-selector card +
+  mode-aware status surface (one statusCard in single-tunnel modes,
+  two stacked cards in `combined` with a "Select for diagnostics"
+  badge). Mode-aware Connect/Disconnect path. Mode persists in
+  `mode.DefaultConfigPath()` TOML. `setmode` CLI for scripted
+  flips. The same daemon binary supports headless via `--headless`;
+  no separate codepath. (PR #37 — Blocks 76O + 76P merged together.)
+- **Three-mode triad — mobile.** iOS + Android shells expose the
+  same three-mode picker through the GUI's bundle-import flow.
+  Single PacketTunnelProvider / VpnService per platform handles all
+  three modes via mode-aware dispatch — `combined` is the embed-
+  netbird-as-library shape inside the system VPN slot, per ADR 0840
+  Amendment 2026-05-10b's path-A mobile invariant. Mode transitions
+  on mobile require an extension restart (`stopTunnel` → reload →
+  `startTunnel` on iOS; `ACTION_STOP` → debounce → `ACTION_START`
+  on Android) — userspace-WG engine ownership isn't reentrancy-safe
+  in-place. Persistence via App Group UserDefaults (iOS) /
+  SharedPreferences (Android) with canonical kebab-case raw values
+  matching the daemon. (PR #36 — Block 76Q triad UI + skeleton
+  tunnels; PR #40 — SDK-bridge for `BundleCapabilities` + `SetMode`
+  / `GetMode` + v0.2 status JSON.)
+- **Real netbird inner-mesh — un-strip M0-M5.** Closes the v0.1.x
+  inner-leg gap where `innermesh.New()` returned `*Fake`. M0+M1
+  imports the un-stripped netbird library behind `goat-embed-ca-2026-05`
+  (commit `32d04da19` on `dfarrel1/netbird`) via a `replace`
+  directive + the upstream's public `client/embed.Client` re-export.
+  M2 lands in-process `fakemgmt` + `fakesignal` servers (full
+  `proto.ManagementServiceServer` + `proto.SignalExchangeServer`
+  with `encryption.EncryptMessage`/`DecryptMessage` framing) so
+  tests can exercise real Login + Sync without a live mgmt server.
+  M3 wires `Netbird.Stats()` + `Netbird.Logs(tail)` through the
+  embed.Client during real sessions. M4 lands three headless smoke
+  tests (`make smoke-modes` — `wg-cp0-only` / `netbird-only` /
+  `combined` end-to-end against in-process fakes). M5 flips
+  `innermesh.New()` from `NewFake()` to `NewNetbird(defaultDeviceID())`
+  so the daemon's `Connect` path now drives real inner-mesh traffic.
+  (PRs #41 / #43 / #50.) Mapping table + per-package un-strip notes
+  in [`internal/innermesh/UNSTRIP.md`](internal/innermesh/UNSTRIP.md).
+- **v0.2 bundle CBOR extension.** Two new optional fields:
+  `inner_mesh_setup` (carries `ManagementURL`, `SetupKey`,
+  `AdminAccessToken`, optional `PreSharedKey`) and `mobile_cert`
+  (per-device Block 80F client mTLS cert + key, optional). Both
+  gated by `omitempty` so v0.1.x bundles continue to verify byte-
+  identically — asserted by `TestV0_2FieldsOmitWhenEmpty`. The
+  bundle parser is forward-compatible: a v0.1.x daemon ignores the
+  fields; a v0.2 daemon ignores them when absent and clamps the
+  available-modes set accordingly. (PR #39.)
+- **`innermesh.Mesh` interface + canonical contract.** Frozen at
+  PR #39 (Block 76N foundation) with `INTERFACE.md` as the
+  authoritative reference. Gates Blocks 76O / 76P / 76Q on
+  interface freeze only, not on the M3–M5 real-impl landings —
+  three worker tracks ran concurrently against the frozen
+  interface. Surface: `Configure(Config) error` / `Connect(ctx)
+  error` / `Disconnect(ctx) error` / `Close() error` / `State()
+  State` / `Stats() Stats` / `Logs(tail int) []string`. `Config`
+  carries `ManagementURL` + `SetupKey` + `AdminAccessToken` +
+  `MobileCert` (Block 80F per-device mTLS material) + `PreSharedKey`
+  + `BundleDeviceID` (v0.2.0 PR #53 — see below). (PR #39.)
+- **Five new IPC methods for inner-mesh control.**
+  `getInnerMeshStatus` / `setInnerMeshProfile` / `enableInnerMesh`
+  / `disableInnerMesh` / `getInnerMeshDiagnostics` join the v0.1.x
+  IPC surface. Mode-aware: a `wg-cp0-only` daemon refuses
+  inner-mesh-enable. Mirrored on mobile via the gomobile facade's
+  `getMode` / `setMode` JSON-RPC equivalents (`ModeStore.read` /
+  `ModeStore.write` on Swift + Kotlin). (PR #39, PR #37.)
+- **DeviceID composition for peer identity.** `innermesh.Config`
+  gains `BundleDeviceID`; `FromBundle` populates it from
+  `b.DeviceID`. At `Netbird.Connect` time, `composeIdentity`
+  combines the operator-assigned bundle DeviceID with the device-
+  reported deviceID into `embed.Options.DeviceName` (format:
+  `"<bundle> (<device>)"` when both are non-empty, either alone
+  otherwise; whitespace-trimmed). The composed string flows to
+  netbird mgmt as `peer.Meta.Hostname` and feeds the `{hostname}`
+  substitution in the SetupKey's `AutoPeerNameTemplate` on the
+  netbird side (`dfarrel1/netbird@c33517a59` —
+  `feat/setupkey-auto-peer-name`). New `NewWithDeviceID(deviceID
+  string) Mesh` helper falls through to `New()` on empty deviceID;
+  mobile SDKs use this with `UIDevice.current.name` /
+  `Build.MANUFACTURER + Build.MODEL`. (PR #53.)
+- **Mobile release-signing pipelines.** Apple Developer Program +
+  Google Play developer-account procurement closed; release-
+  signing is wired into CI. iOS `xcodebuild archive` + IPA export
+  using Distribution profiles produced by the App Store Connect
+  API client (PR #47); Android Play Store signing via the upload
+  keystore + signing config in `mobile/android/Shell/app/build.gradle.kts`.
+  (PR #44 — pipelines; PR #46 — root-cause iOS signing config fix
+  that unblocked TestFlight upload; PR #47 — ASC API client + tester
+  CLI for tester management without the web UI.)
+- **Android targetSdk + compileSdk bumped to 35.** Play Store deadline
+  for new uploads. `versionCode` bumped to 2 because versionCode 1
+  was already uploaded to the Play Console during pipeline-debugging
+  and the Play API rejects re-uploads at the same code. (PR #45.)
+- **Goat brand mark on mobile.** iOS app icon (all required sizes via
+  Asset Catalog) + Android adaptive icon (foreground + background
+  drawables, all DPI buckets, monochrome variant for Android 13+
+  themed icons). Mirrors the desktop brand-mark landing from v0.1.1
+  PR #27 across the mobile surfaces. (PR #38.)
+- **v0.2 desktop-vs-mobile parity-audit doc.**
+  [`docs/parity-audit-desktop-vs-mobile.md`](docs/parity-audit-desktop-vs-mobile.md)
+  — the canonical reference for whether the two surfaces tell the
+  same story for verdict-gate item (f). Covers IPC surface, mode
+  model, status model, persistence shape, mode-restart contracts,
+  bundle-import flow, brand-mark posture, and the v0.2 verdict-gate
+  gap (§10 — three load-bearing dependencies that 76Q's code
+  surface doesn't control). Worker B owns the desktop column;
+  Worker C owns the mobile column; rows are the parity dimensions
+  the v0.2 verdict gate measures. (PR #36 initial draft; PR #48
+  refresh against the post-M5 state.)
+- **v0.2 verdict-gate operator playbook.**
+  [`docs/operations/v0.2-verdict-gate-playbook.md`](docs/operations/v0.2-verdict-gate-playbook.md)
+  — per-gate pre-flight checklist, test sequence, pass/fail
+  criteria, and evidence-recording instructions for the four
+  operator-fired gates (b) / (c) / (e) / (g). Cross-links the
+  parity-audit doc + [`docs/operations/goat-client-headless-bringup.md`](docs/operations/goat-client-headless-bringup.md).
+  The captain consults this doc to verify each gate has closed
+  before cutting the v0.2.0 tag.
+- **Headless bringup runbook.**
+  [`docs/operations/goat-client-headless-bringup.md`](docs/operations/goat-client-headless-bringup.md)
+  — single-box bringup for the headless variant (Orin sites,
+  locked-down servers, VM appliances). Targets ≤5 min from
+  package-on-disk to active tunnel; covers mode-pick via
+  `GOAT_MODE` env, bundle one-shot import, mode-switch (live IPC
+  or config-file restart), reboot-survives smoke, rollback.
+  (PR #37.)
+- **v0.2 packages cross-compile CI gate.** Every PR cross-compiles
+  the v0.2 packages (`internal/innermesh/...`, `internal/mode/...`,
+  `internal/bundle/...` with the new fields, IPC method set) across
+  all six desktop targets. Catches platform-divergent build
+  regressions before they reach the build-gui-matrix path. (PR #39.)
+- **Multi-network profile store + tray switcher — Block 76M.** One
+  goat-client install now holds N verified bundles + a single
+  active-profile pointer; the operator switches between them
+  through a tray submenu or a new Profiles tab without
+  re-enrollment. New `internal/profile/` package owns the on-disk
+  store (`~/.goat-client/profiles/<slug>.cbor` + `.meta.json` +
+  top-level `active.json`); atomic writes via temp-fsync-rename.
+  Six new IPC methods (`listProfiles`, `addProfile`,
+  `removeProfile`, `renameProfile`, `setActiveProfile`,
+  `getActiveProfile`); the daemon's `setActiveLocked` path tears
+  down the previously-active legs, adopts the new bundle + mode +
+  slug atomically under the daemon mutex, brings the new mode's
+  legs up, and writes `active.json` last so a crash mid-bring-up
+  leaves the previous active marker pointing at a known-reachable
+  profile. Switch round-trip measured at ~58ms (Fake innermesh,
+  cached creds). Closes verdict-gate's "v0.2 ship also delivers
+  76M multi-network switching verified by a user holding ≥2
+  profiles and switching cleanly through the UI" item per
+  [implementation-plan row 8621](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/project/implementation-plan.md#block-76).
+  (PR #56.)
+
+### Changed
+
+- **`innermesh.New()` returns `*Netbird` instead of `*Fake`.** The
+  v0.1.x-era `Fake` is still reachable via `NewFake()` for tests
+  that need a deterministic in-memory mesh; the daemon's default
+  factory in `internal/daemon/daemon.go` (`meshFactory =
+  innermesh.New`) now constructs real netbird inner-mesh sessions
+  on every Connect. (PR #50.)
+- **Default install mode is `combined`.** Fresh installs on every
+  platform default to `combined`. v0.1.x users upgrading in place
+  keep their existing posture — `wg-cp0-only` if they imported a
+  v0.1.x-shape bundle, since the daemon auto-clamps the persisted
+  mode to whatever `BundleCapabilities` reports as available, and a
+  v0.1.x bundle (no `inner_mesh_setup`) reports `wg_cp0: true,
+  inner_mesh: false`. (PR #37.)
+- **`internal/innermesh/UNSTRIP.md` is the authoritative un-strip
+  reference.** Mapping table from netbird packages (`client/embed`,
+  `management`, `signal`, `encryption`, `route`, etc.) to their
+  v0.2 consumers, plus the per-PR M0–M5 worklog. Future un-strip
+  follow-ups (kernel-WG path, route mgmt, ICE) extend the same
+  table. (PR #41 / #43 / #50.)
+
+### Fixed
+
+- **iOS Distribution signing was misconfigured for TestFlight upload.**
+  `xcodebuild archive` produced a green archive but `xcodebuild
+  -exportArchive` rejected it with "no signing certificate matches
+  this profile." Root cause: the project's `CODE_SIGN_IDENTITY` and
+  `PROVISIONING_PROFILE_SPECIFIER` build settings carried Development
+  values into the Release configuration; the App Store Connect API
+  client (PR #47) registers Distribution profiles, not Development.
+  Fix: per-configuration code-signing in `project.yml`, with
+  `xcconfig` files split for Debug vs Release. TestFlight upload now
+  succeeds against the Distribution profile fetched by the ASC API
+  client. (PR #46.)
+- **`SetMode` bring-up missed `mesh.Configure` for inner-mesh-mode
+  switches.** Post-flip parity audit caught it: after PR #50 flipped
+  `innermesh.New()` from `Fake` to `NewNetbird()`, switching into
+  `combined` or `netbird-only` mode via `SetMode` errored with
+  `"not configured"` because the bring-up path called `mesh.Connect`
+  without first deriving + applying a `Config` from the active
+  bundle. The `Fake` tolerated the missing Configure (its Connect
+  was a no-op); the real `Netbird` doesn't. Fix:
+  `SetMode` now calls `meshConfigFromBundle(b)` + `mesh.Configure(cfg)`
+  before `mesh.Connect(ctx)`, mirroring the wg-cp0 bring-up shape.
+  Regression bar at `internal/daemon/mode_test.go::TestSetModeConfiguresInnerMeshFromBundle`
+  wraps the Fake in a `recordingMesh` and asserts the bundle-derived
+  `Config` (ManagementURL + SetupKey) reaches `mesh.Configure` on
+  `SetMode → Combined`. Same PR also drops a stale
+  `"aggregate (fake)"` synthetic row from `GetInnerMeshDiagnostics`
+  `PeerStats`. (PR #57.)
+
+### Verdict-gate map (Block 76N–Q)
+
+The v0.2 verdict gate is seven items per
+[implementation-plan row 8621](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/project/implementation-plan.md#block-76).
+This release's PRs close every code-side item; the remaining four
+gates are operator-fired and tracked in
+[`docs/operations/v0.2-verdict-gate-playbook.md`](docs/operations/v0.2-verdict-gate-playbook.md).
+
+| Gate | What | Status | Closure |
+|---|---|---|---|
+| **(a)** | `wg-cp0-only` unchanged from v0.1.x on every platform (regression bar) | ✅ code-side complete | Three-mode smoke (PR #50) + mode selector (PR #37) keep `wg-cp0-only` on the v0.1.x codepath; CI matrix exercises it on every PR. |
+| **(b)** | `combined` on ≥3 desktop installs with inner-mesh peer reach | ⚠ operator-fired | Code-side ready post-#50; see [playbook §(b)](docs/operations/v0.2-verdict-gate-playbook.md#b-combined-on-3-desktop-installs). |
+| **(c)** | `combined` on ≥1 iOS + ≥1 Android device | ⚠ operator-fired | Code-side ready post-#50 + #53; see [playbook §(c)](docs/operations/v0.2-verdict-gate-playbook.md#c-combined-on-1-ios--1-android-device). |
+| **(d)** | `netbird-only` on ≥1 mobile + ≥1 desktop with mgmt-API reach over Block 80 | ⛔ blocked | Block 80 crutch substrate (ADR 0843, trunk rows 80A–80H) not yet live as of 2026-05-21. Mobile-cert plumbing is contract-complete (PR #39 `MobileCert` field + PR #40 `BundleCapabilities.has_mobile_cert` signal). **Deferred past v0.2.0 tag — closure tracked at trunk substrate level.** |
+| **(e)** | Headless mode on ≥1 single-Orin site, one-binary install in any mode | ⚠ operator-fired | Code-side complete (PR #37 headless binary + `--headless` flag); see [playbook §(e)](docs/operations/v0.2-verdict-gate-playbook.md#e-headless-on-a-single-orin-site) and [`docs/operations/goat-client-headless-bringup.md`](docs/operations/goat-client-headless-bringup.md). |
+| **(f)** | Mobile ↔ desktop combined-mode parity audit | ✅ landed | [`docs/parity-audit-desktop-vs-mobile.md`](docs/parity-audit-desktop-vs-mobile.md) post-M5 refresh (PR #48). |
+| **(g)** | TestFlight + Play Internal-track presence | ⚠ operator-fired | Release-signing pipelines (PR #44 / #46 / #47); see [playbook §(g)](docs/operations/v0.2-verdict-gate-playbook.md#g-testflight--play-internal-submission). |
+
+### Cross-repo coordination
+
+- **`dfarrel1/netbird@goat-embed-ca-2026-05` (commit `32d04da19`).**
+  The un-strip baseline — netbird upstream pinned at
+  `3fc5a8d4a1fe308ff1068764a09b90b0859ab8fe` plus the embed-CA +
+  ServerName-port-strip patch already in use by v0.1.x's
+  `internal/ipc/grpc/`. Consumed via `go.mod` `replace` directive +
+  the 8-entry replace block mirroring upstream netbird's. M0+M1
+  validation at PR #41.
+- **`dfarrel1/netbird@c33517a59` (branch
+  `feat/setupkey-auto-peer-name`).** Server-side
+  `AutoPeerNameTemplate` consumes the `{hostname}` substitution
+  goat-client populates via `composeIdentity`. Server- and client-
+  side ship independently; default-empty-template mode still works
+  because both halves of identity are baked into the wire-side
+  hostname regardless of operator template config. (PR #53 client
+  side.)
+- **Block 80 crutch tier (ADR 0843).** Verdict-gate (d) blocker.
+  The mobile-cert side of the contract is fully shipped from
+  goat-client (`innermesh.Config.MobileCert` field + bundle
+  `mobile_cert` CBOR ext + `BundleCapabilities.has_mobile_cert`
+  capability bit). Server-side substrate (trunk rows 80A–80H)
+  stands up on trunk's own schedule; (d) closes when it does, no
+  additional goat-client code change expected.
+- **Block 79 ECDSA P-256 rotation.** Already landed in v0.1.1
+  (PR #26) — `internal/bundle/bundle.go` `Verify` accepts ECDSA
+  public keys; `internal/trustanchor/` carries the post-rotation
+  pinned root (`dev-desertbread-ca-ecdsa-2026-05-09`). No further
+  v0.2.0 action.
+
+### Known issues — carried from v0.1.x
+
+- **Engineering builds ship unsigned on desktop.** Apple Developer ID
+  + Authenticode procurement remains the last v0.1.x backlog item;
+  cosign signing at the GitHub Release boundary remains in place.
+  Mobile signing did close (PR #44 / #46 / #47), so iOS / Android
+  builds carry App Store / Play Internal trust.
+- **`TestNetbird_LifecycleAgainstFakes` skips under `-race`.**
+  Carried from v0.1.2 — the race is in vendored upstream netbird's
+  `(*ConnectClient).run.func4` ↔ `(*Engine).close` engine-state
+  access; not in our code. Skipped under `-race` via build-tagged
+  `raceDetectorEnabled` const so functional regressions still gate
+  merges on every other runner.
 
 ## [0.1.2] — 2026-05-15
 
@@ -363,6 +652,8 @@ commit `3fc5a8d4a1fe308ff1068764a09b90b0859ab8fe` (BSD-3-Clause). Design
 lineage cited per file; aggregate attribution in
 [`NOTICE`](NOTICE) + [`LICENSE.netbird-bsd3`](LICENSE.netbird-bsd3).
 
-[Unreleased]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.1.1...HEAD
+[Unreleased]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.1.2...HEAD
+[0.2.0]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.1.2...HEAD
+[0.1.2]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.2
 [0.1.1]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.1
 [0.1.0]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.0
