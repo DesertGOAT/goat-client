@@ -166,6 +166,26 @@ TestFlight + Play Internal submissions that close (g).
   `internal/bundle/...` with the new fields, IPC method set) across
   all six desktop targets. Catches platform-divergent build
   regressions before they reach the build-gui-matrix path. (PR #39.)
+- **Multi-network profile store + tray switcher — Block 76M.** One
+  goat-client install now holds N verified bundles + a single
+  active-profile pointer; the operator switches between them
+  through a tray submenu or a new Profiles tab without
+  re-enrollment. New `internal/profile/` package owns the on-disk
+  store (`~/.goat-client/profiles/<slug>.cbor` + `.meta.json` +
+  top-level `active.json`); atomic writes via temp-fsync-rename.
+  Six new IPC methods (`listProfiles`, `addProfile`,
+  `removeProfile`, `renameProfile`, `setActiveProfile`,
+  `getActiveProfile`); the daemon's `setActiveLocked` path tears
+  down the previously-active legs, adopts the new bundle + mode +
+  slug atomically under the daemon mutex, brings the new mode's
+  legs up, and writes `active.json` last so a crash mid-bring-up
+  leaves the previous active marker pointing at a known-reachable
+  profile. Switch round-trip measured at ~58ms (Fake innermesh,
+  cached creds). Closes verdict-gate's "v0.2 ship also delivers
+  76M multi-network switching verified by a user holding ≥2
+  profiles and switching cleanly through the UI" item per
+  [implementation-plan row 8621](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/project/implementation-plan.md#block-76).
+  (PR #56.)
 
 ### Changed
 
@@ -202,6 +222,22 @@ TestFlight + Play Internal submissions that close (g).
   `xcconfig` files split for Debug vs Release. TestFlight upload now
   succeeds against the Distribution profile fetched by the ASC API
   client. (PR #46.)
+- **`SetMode` bring-up missed `mesh.Configure` for inner-mesh-mode
+  switches.** Post-flip parity audit caught it: after PR #50 flipped
+  `innermesh.New()` from `Fake` to `NewNetbird()`, switching into
+  `combined` or `netbird-only` mode via `SetMode` errored with
+  `"not configured"` because the bring-up path called `mesh.Connect`
+  without first deriving + applying a `Config` from the active
+  bundle. The `Fake` tolerated the missing Configure (its Connect
+  was a no-op); the real `Netbird` doesn't. Fix:
+  `SetMode` now calls `meshConfigFromBundle(b)` + `mesh.Configure(cfg)`
+  before `mesh.Connect(ctx)`, mirroring the wg-cp0 bring-up shape.
+  Regression bar at `internal/daemon/mode_test.go::TestSetModeConfiguresInnerMeshFromBundle`
+  wraps the Fake in a `recordingMesh` and asserts the bundle-derived
+  `Config` (ManagementURL + SetupKey) reaches `mesh.Configure` on
+  `SetMode → Combined`. Same PR also drops a stale
+  `"aggregate (fake)"` synthetic row from `GetInnerMeshDiagnostics`
+  `PeerStats`. (PR #57.)
 
 ### Verdict-gate map (Block 76N–Q)
 
