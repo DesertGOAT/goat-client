@@ -10,9 +10,9 @@ Consumes an [offline-CA-signed CBOR bundle](https://github.com/dlf-dds/DesertBre
 
 ## Status
 
-**v0.1.1 shipped 2026-05-12** — the "actually usable against goat-prod" release. Cosign-signed daemon **and** Fyne GUI binaries for six desktop targets, plus iOS + Android shells with real-tunnel wire-up, are at the [v0.1.1 GitHub Release](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.1). See [`docs/quickstart.md`](docs/quickstart.md) for install + first-bundle import in 10 minutes.
+**v0.2.0 shipped 2026-06-01** — the **three-mode triad release.** Cosign-signed daemon **and** Fyne GUI binaries for six desktop targets, plus iOS + Android shells driving real inner-mesh peer reach, are at the [v0.2.0 GitHub Release](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.2.0). See [`docs/quickstart.md`](docs/quickstart.md) for install + first-bundle import in 10 minutes.
 
-> **Maturity: operator-class first-contact dogfood.** Daemon + Fyne GUI ship in every platform archive; per-OS DNS adapters and a real-protocol nightly smoke against a live wg-cp0 endpoint land here. UI test coverage (GAP #2) and a cross-platform PR gate (GAP #3) remain on the v0.1.x backlog — see [HANDOFF.md → v0.1.1 follow-ups](HANDOFF.md#v011-follow-ups). v0.2 foundation (three operating modes: `wg-cp0-only` / `netbird-only` / `combined`) is in flight on `main`; see the [v0.2 foundation build-out](HANDOFF.md#v02-foundation-build-out-in-flight-2026-05-14) section.
+> **Maturity: operator-class first-contact dogfood with real inner-mesh peer reach.** v0.2.0 lands three operating modes across every platform class — `wg-cp0-only` (the v0.1.x regression bar), `netbird-only` (inner mesh only, via the [Block 80 public mTLS crutch tier](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/adr/0843-public-mgmt-signal-relay-mobile-crutch.md)), `combined` (both tunnels in one process). Mode is operator-pickable at install + end-user-pickable at runtime. See [CHANGELOG.md](CHANGELOG.md) for the full landing.
 
 See [CHANGELOG.md](CHANGELOG.md) for full per-version release notes and [HANDOFF.md](HANDOFF.md) for the build-out history.
 
@@ -26,13 +26,13 @@ See [CHANGELOG.md](CHANGELOG.md) for full per-version release notes and [HANDOFF
 
 ## Install
 
-Pick the package for your OS from the [v0.1.1 release page](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.1). All assets are cosign-signed; see [Verifying release artifacts](#verifying-release-artifacts) below.
+Pick the package for your OS from the [v0.2.0 release page](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.2.0). All assets are cosign-signed; see [Verifying release artifacts](#verifying-release-artifacts) below.
 
 ### Debian / Ubuntu (.deb)
 
 ```bash
 curl -fL -o goat-client.deb \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.1.1/goat-client_0.1.1_amd64.deb
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client_0.2.0_amd64.deb
 sudo dpkg -i goat-client.deb
 sudo systemctl status goat-clientd        # daemon auto-starts
 ```
@@ -41,7 +41,7 @@ sudo systemctl status goat-clientd        # daemon auto-starts
 
 ```bash
 curl -fL -o goat-client.rpm \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.1.1/goat-client-0.1.1-1.x86_64.rpm
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-1.x86_64.rpm
 sudo dnf install ./goat-client.rpm
 sudo systemctl status goat-clientd        # daemon auto-starts
 ```
@@ -50,7 +50,7 @@ sudo systemctl status goat-clientd        # daemon auto-starts
 
 ```bash
 curl -fL -o goat-client.dmg \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.1.1/goat-client-0.1.1-arm64.dmg
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-arm64.dmg
 hdiutil attach goat-client.dmg
 sudo installer -pkg "/Volumes/goat-client/goat-client.pkg" -target /
 hdiutil detach "/Volumes/goat-client"
@@ -63,7 +63,7 @@ Engineering builds ship unsigned. If Gatekeeper refuses to launch the GUI, clear
 
 ```powershell
 Invoke-WebRequest -OutFile goat-client.msi `
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.1.1/goat-client-0.1.1-amd64.msi
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-amd64.msi
 msiexec /i goat-client.msi /qn
 Get-Service goat-clientd                  # daemon auto-starts
 ```
@@ -113,8 +113,8 @@ Every release archive is cosign-signed (keyless / OIDC, GitHub Actions identity)
 
 ```bash
 # Fetch the artifact, the signature, and the certificate.
-ASSET=goat-client_0.1.1_amd64.deb
-BASE=https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.1.1
+ASSET=goat-client_0.2.0_amd64.deb
+BASE=https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0
 curl -fLO "$BASE/$ASSET"
 curl -fLO "$BASE/$ASSET.sig"
 curl -fLO "$BASE/$ASSET.pem"

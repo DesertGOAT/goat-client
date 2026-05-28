@@ -22,8 +22,13 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.0.1"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    # CURRENT_PROJECT_VERSION must be the next unused build number for
+    # the App Store Connect record — TestFlight rejects re-uploads at
+    # the same number. The operator bumps this to the next free slot
+    # right before tag-cut (look up "Builds" tab in App Store Connect
+    # to find the highest existing buildNumber, then add 1).
+    CURRENT_PROJECT_VERSION: "2"
     SWIFT_VERSION: "5.9"
     ENABLE_BITCODE: NO
     # DEVELOPMENT_TEAM is pulled from the APPLE_DEVELOPMENT_TEAM env var at
