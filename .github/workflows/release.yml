@@ -578,7 +578,7 @@ jobs:
       - name: Three-mode install + systemctl check (ubuntu-22.04, mode=combined)
         run: |
           set -euo pipefail
-          sudo GOAT_MODE=combined apt install -y "$deb"
+          sudo GOAT_MODE=combined apt install -y "./$deb"
           # Daemon will fail-fast on missing trust roots; that's
           # expected — the verdict gate is "install + unit reaches
           # systemctl status without fatal config error", not
@@ -603,7 +603,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get remove -y goat-client-headless
-          sudo GOAT_MODE=netbird-only apt install -y "$deb"
+          sudo GOAT_MODE=netbird-only apt install -y "./$deb"
           grep 'mode = "netbird-only"' /etc/goat-client/config.toml
       - name: Upload headless .deb artifact
         uses: actions/upload-artifact@v4
