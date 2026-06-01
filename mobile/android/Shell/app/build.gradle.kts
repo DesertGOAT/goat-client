@@ -62,11 +62,12 @@ android {
                          // pidfd-seccomp-policy issues that the engine
                          // works around at runtime.
         targetSdk = 35
-        // versionCode bumped to 2 — version 1 was already uploaded to
-        // Play Internal Testing track. Play rejects re-uploads with the
-        // same versionCode.
-        versionCode = 2
-        versionName = "0.0.1-pre"
+        // versionCode bumped per v0.2.0 tag-cut. Play rejects
+        // re-uploads at the same versionCode; the operator confirms
+        // 3 is unused (or bumps further if v0.2.0-rc tags already
+        // burned 3+) right before tag-cut.
+        versionCode = 3
+        versionName = "0.2.0"
     }
 
     signingConfigs {

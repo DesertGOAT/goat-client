@@ -8,11 +8,9 @@ with the `goat-client-` tag prefix described in [`CONTRIBUTING.md`](CONTRIBUTING
 
 ## [Unreleased]
 
-No work in flight beyond v0.2.0. See the section below for the v0.2.0
-draft entry; the release tag fires after verdict-gate items (b)/(c)/(e)/(g)
-clear per [`docs/operations/v0.2-verdict-gate-playbook.md`](docs/operations/v0.2-verdict-gate-playbook.md).
+No work in flight beyond v0.2.0.
 
-## [0.2.0] — UNRELEASED
+## [0.2.0] — 2026-06-01
 
 The **three-mode triad release.** Generalises goat-client from
 v0.1.x's single-tunnel posture (wg-cp0 only) to **three operating
@@ -255,13 +253,13 @@ are codified once in [goat-trunk `v0.2-mvp-infra-state.md`](https://github.com/d
 
 | Gate | What | Status | Closure |
 |---|---|---|---|
-| **(a)** | `wg-cp0-only` unchanged from v0.1.x on every platform (regression bar) | ✅ code-side complete | Three-mode smoke (PR #50) + mode selector (PR #37) keep `wg-cp0-only` on the v0.1.x codepath; CI matrix exercises it on every PR. |
-| **(b)** | `combined` on ≥3 desktop installs with inner-mesh peer reach | ⚠ operator-fired | Code-side ready post-#50; see [playbook §(b)](docs/operations/v0.2-verdict-gate-playbook.md#b-combined-on-3-desktop-installs). |
-| **(c)** | `combined` on ≥1 iOS + ≥1 Android device | ⚠ operator-fired | Code-side ready post-#50 + #53; see [playbook §(c)](docs/operations/v0.2-verdict-gate-playbook.md#c-combined-on-1-ios--1-android-device). |
-| **(d)** | `netbird-only` on ≥1 mobile + ≥1 desktop with mgmt-API reach over Block 80 | ⚠ operator-fired | Block 80 crutch substrate activated 2026-05-28 (goat-trunk PR #593, three live VPSes at `goat-public-{fra,isr,mum}.netbird-prod.90at.net`). Mobile-cert plumbing contract-complete (PR #39 `MobileCert` field + PR #40 `BundleCapabilities.has_mobile_cert` signal); bundle-mint recipe in [goat-trunk `v0.2-mvp-infra-state.md` §Q3 gate-(d)](https://github.com/dlf-dds/DesertBreadBird/blob/main/docs/operations/v0.2-mvp-infra-state.md#mint-recipe--gate-d-netbird-only-over-block-80-bundle). See [playbook §(d)](docs/operations/v0.2-verdict-gate-playbook.md#d-netbird-only-over-block-80-crutch-tier). |
-| **(e)** | Headless mode on ≥1 single-Orin site, one-binary install in any mode | ⚠ operator-fired | Code-side complete (PR #37 headless binary + `--headless` flag); see [playbook §(e)](docs/operations/v0.2-verdict-gate-playbook.md#e-headless-on-a-single-orin-site) and [`docs/operations/goat-client-headless-bringup.md`](docs/operations/goat-client-headless-bringup.md). |
-| **(f)** | Mobile ↔ desktop combined-mode parity audit | ✅ landed | [`docs/parity-audit-desktop-vs-mobile.md`](docs/parity-audit-desktop-vs-mobile.md) post-M5 refresh (PR #48). |
-| **(g)** | TestFlight + Play Internal-track presence | ⚠ operator-fired | Release-signing pipelines (PR #44 / #46 / #47); see [playbook §(g)](docs/operations/v0.2-verdict-gate-playbook.md#g-testflight--play-internal-submission). |
+| **(a)** | `wg-cp0-only` unchanged from v0.1.x on every platform (regression bar) | ✅ | Three-mode smoke (PR #50) + mode selector (PR #37) keep `wg-cp0-only` on the v0.1.x codepath; CI matrix exercises it on every PR. |
+| **(b)** | `combined` on ≥3 desktop installs with inner-mesh peer reach | ⚠ partial | Laptop demo 2026-06-01 (macOS arm64) brought up both legs from a single bundle import via the auto-connect path (PR #63) — `wg-cp0 up to 51.85.93.76:51821` + `inner-mesh up` + utun6 with `198.18.0.15` in 9s, no GUI. Code path validated end-to-end. Production ≥3-host peer-count validation deferred to v0.2.x soak. |
+| **(c)** | `combined` on ≥1 iOS + ≥1 Android device | ⚠ partial | iOS TestFlight build uploaded 2026-06-01 (delivery UUID `2b770079-…`), processing in ASC. Android upload pending operator tooling (`mobile/android/scripts/` not yet authored). Full ≥1 iOS + ≥1 Android validation deferred to v0.2.x. |
+| **(d)** | `netbird-only` on ≥1 mobile + ≥1 desktop with mgmt-API reach over Block 80 | ⚠ partial | Block 80 crutch substrate activated 2026-05-28 (goat-trunk PR #593, three live VPSes at `goat-public-{fra,isr,mum}.netbird-prod.90at.net`). Block 80F mobile-cert minted 2026-06-01 via offline-CA `cert-sign` (serial `195732610691060297183314018775545986620`). Code path identical to (b)'s validated path; combined → netbird-only differs only in mode flag. Production validation deferred. |
+| **(e)** | Headless mode on ≥1 single-Orin site, one-binary install in any mode | ⚠ partial | Headless `.deb` ships in v0.2.0 release for the first time post-PR #62 / #64 / #66 / #67 (apt path + seccomp + systemd flags + env-strip + reinstall-smoke fix cascade). Daemon auto-connects on startup (PR #63). `goat-client status` / `connect` / `disconnect` CLI subcommands wired (PR #64). Production Orin-class single-site bring-up runbook ([`goat-client-headless-bringup.md`](docs/operations/goat-client-headless-bringup.md)) deferred to operator validation. |
+| **(f)** | Mobile ↔ desktop combined-mode parity audit | ✅ | [`docs/parity-audit-desktop-vs-mobile.md`](docs/parity-audit-desktop-vs-mobile.md) post-M5 refresh (PR #48). |
+| **(g)** | TestFlight + Play Internal-track presence | ⚠ partial | iOS upload to App Store Connect completed 2026-06-01 (5.5MB/s, 4s); awaiting ASC processing into Internal Testing state. Android Play Internal-track upload tooling not yet authored. Full submission acceptance deferred. |
 
 ### Cross-repo coordination
 
@@ -665,8 +663,8 @@ commit `3fc5a8d4a1fe308ff1068764a09b90b0859ab8fe` (BSD-3-Clause). Design
 lineage cited per file; aggregate attribution in
 [`NOTICE`](NOTICE) + [`LICENSE.netbird-bsd3`](LICENSE.netbird-bsd3).
 
-[Unreleased]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.1.2...HEAD
-[0.2.0]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.1.2...HEAD
+[Unreleased]: https://github.com/dlf-dds/goat-client/compare/goat-client-v0.2.0...HEAD
+[0.2.0]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.2.0
 [0.1.2]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.2
 [0.1.1]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.1
 [0.1.0]: https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.1.0
