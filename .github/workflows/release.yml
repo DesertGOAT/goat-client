@@ -612,10 +612,21 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get remove -y goat-client-headless
+          # apt-get remove leaves /etc/goat-client/config.toml in place
+          # (it's not a packaged conffile — it's written by the
+          # postinstall). On a subsequent `apt install` of the same
+          # version, dpkg sees the previous version as still-known and
+          # calls postinstall with $2 set, which the postinstall maps
+          # to action="upgrade". The upgrade path intentionally does
+          # NOT overwrite config.toml — operators may have edited it.
+          # To exercise the install path's GOAT_MODE → config.toml
+          # write, delete the stale config.toml first so the
+          # postinstall's `[ ! -f /etc/goat-client/config.toml ]` guard
+          # fires and the file is rewritten with the new mode.
+          sudo rm -f /etc/goat-client/config.toml
           # Same /etc/default-staging trick — apt strips env before the
-          # postinstall runs. apt-get remove keeps the conffile alongside
-          # the daemon's /etc/goat-client/config.toml; rewrite both so
-          # the postinstall's install-path overwrite kicks in cleanly.
+          # postinstall runs (PR #66). Stage GOAT_MODE there before
+          # apt install so the postinstall reads it.
           echo "GOAT_MODE=netbird-only" | sudo tee /etc/default/goat-client-headless >/dev/null
           sudo apt install -y "./$deb"
           grep 'mode = "netbird-only"' /etc/goat-client/config.toml
