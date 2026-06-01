@@ -13,11 +13,11 @@
 // GUI. Useful for ops scripts and headless boxes that still have the
 // goat-client binary on PATH.
 //
-//   goat-client getmode             — print the active mode + exit
-//   goat-client setmode <mode>      — switch mode + exit (re-uses daemon IPC)
-//   goat-client connect             — bring up the active mode's subsystems
-//   goat-client disconnect          — tear down the active mode's subsystems
-//   goat-client status              — print the current status snapshot + exit
+//	goat-client getmode             — print the active mode + exit
+//	goat-client setmode <mode>      — switch mode + exit (re-uses daemon IPC)
+//	goat-client connect             — bring up the active mode's subsystems
+//	goat-client disconnect          — tear down the active mode's subsystems
+//	goat-client status              — print the current status snapshot + exit
 //
 // connect / disconnect / status make the daemon driveable from a shell
 // without the Fyne GUI — the load-bearing path for headless installs
@@ -25,6 +25,20 @@
 // already accepts MethodConnect / MethodDisconnect / MethodGetStatus
 // (the GUI uses them); the subcommands are thin handlers around the
 // existing internal/ipc client.
+//
+// Argument-order tolerance: subcommand may appear before OR after the
+// global --daemon-addr flag. Both of these work:
+//
+//	goat-client status --daemon-addr unix:/tmp/foo.sock
+//	goat-client --daemon-addr unix:/tmp/foo.sock status
+//
+// The first form's subcommand-then-flags parse happens in the
+// subcommand handler's own flag.NewFlagSet; the second form's
+// flag-then-subcommand parse uses the top-level flag.Parse which stops
+// at the first positional. The global --daemon-addr value is threaded
+// into the subcommand handler as its default; the handler's local
+// flag.NewFlagSet re-parses it if a second instance appears in the
+// trailing args (last-write-wins).
 //
 // The GUI split is the netbird upstream pattern and exists because
 // fyne.io/systray's NSStatusItem and Fyne's NSApplication both want the
@@ -44,34 +58,34 @@ import (
 	"github.com/dlf-dds/goat-client/internal/ui"
 )
 
-func main() {
-	// Subcommand dispatch happens before flag parsing because Go's flag
-	// package consumes os.Args[1:] linearly. `goat-client getmode` and
-	// `goat-client setmode <mode>` use a tiny hand-rolled dispatcher.
-	if len(os.Args) >= 2 {
-		switch os.Args[1] {
-		case "getmode":
-			os.Exit(runGetMode(os.Args[2:]))
-		case "setmode":
-			os.Exit(runSetMode(os.Args[2:]))
-		case "connect":
-			os.Exit(runConnect(os.Args[2:]))
-		case "disconnect":
-			os.Exit(runDisconnect(os.Args[2:]))
-		case "status":
-			os.Exit(runStatus(os.Args[2:]))
-		case "help", "-h", "--help":
-			printUsage(os.Stdout)
-			return
-		}
-	}
+// knownSubcommands is the set of recognised positional verbs. Kept as a
+// package-level so tests can assert "every subcommand listed in
+// printUsage has a dispatcher entry."
+var knownSubcommands = map[string]bool{
+	"getmode":    true,
+	"setmode":    true,
+	"connect":    true,
+	"disconnect": true,
+	"status":     true,
+	"help":       true,
+}
 
-	var (
-		windowMode = flag.Bool("window", false, "run as the Fyne window child process (otherwise: run the systray)")
-		daemonAddr = flag.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
-	)
+func main() {
+	// Top-level flag parse. Global flags consumed before the first
+	// positional (which is the subcommand, if any). flag.Parse stops at
+	// the first non-flag argument, so both arg orders work — see
+	// package doc comment.
+	windowMode := flag.Bool("window", false, "run as the Fyne window child process (otherwise: run the systray)")
+	daemonAddr := flag.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	flag.Usage = func() { printUsage(os.Stderr) }
 	flag.Parse()
 
+	positional := flag.Args()
+	if len(positional) > 0 {
+		os.Exit(dispatchSubcommand(positional[0], positional[1:], *daemonAddr))
+	}
+
+	// No subcommand: GUI mode.
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	if *windowMode {
 		log.SetPrefix("goat-client[window] ")
@@ -89,6 +103,34 @@ func main() {
 	}
 }
 
+// dispatchSubcommand routes a recognised subcommand name to its
+// handler, threading the global daemon-addr default through.
+// Unknown names print usage to stderr and return exit 2.
+//
+// Returns the desired process exit code; main wraps with os.Exit.
+// Exposed for tests; not part of the binary's public surface.
+func dispatchSubcommand(name string, args []string, defaultDaemonAddr string) int {
+	switch name {
+	case "getmode":
+		return runGetMode(args, defaultDaemonAddr)
+	case "setmode":
+		return runSetMode(args, defaultDaemonAddr)
+	case "connect":
+		return runConnect(args, defaultDaemonAddr)
+	case "disconnect":
+		return runDisconnect(args, defaultDaemonAddr)
+	case "status":
+		return runStatus(args, defaultDaemonAddr)
+	case "help", "-h", "--help":
+		printUsage(os.Stdout)
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown subcommand: %s\n", name)
+		printUsage(os.Stderr)
+		return 2
+	}
+}
+
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "goat-client — desktop GUI + CLI for the goat overlay")
 	fmt.Fprintln(w)
@@ -103,13 +145,13 @@ func printUsage(w *os.File) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Modes: wg-cp0-only | netbird-only | combined")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Common flags:")
+	fmt.Fprintln(w, "Common flags (accepted before OR after the subcommand):")
 	fmt.Fprintln(w, "  --daemon-addr=ADDR    override the daemon IPC endpoint")
 }
 
-func runGetMode(args []string) int {
+func runGetMode(args []string, defaultDaemonAddr string) int {
 	fs := flag.NewFlagSet("getmode", flag.ContinueOnError)
-	daemonAddr := fs.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	daemonAddr := fs.String("daemon-addr", defaultDaemonAddr, "goat-clientd IPC address")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -130,9 +172,9 @@ func runGetMode(args []string) int {
 	return 0
 }
 
-func runSetMode(args []string) int {
+func runSetMode(args []string, defaultDaemonAddr string) int {
 	fs := flag.NewFlagSet("setmode", flag.ContinueOnError)
-	daemonAddr := fs.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	daemonAddr := fs.String("daemon-addr", defaultDaemonAddr, "goat-clientd IPC address")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -163,9 +205,9 @@ func runSetMode(args []string) int {
 	return 0
 }
 
-func runConnect(args []string) int {
+func runConnect(args []string, defaultDaemonAddr string) int {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
-	daemonAddr := fs.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	daemonAddr := fs.String("daemon-addr", defaultDaemonAddr, "goat-clientd IPC address")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -187,9 +229,9 @@ func runConnect(args []string) int {
 	return 0
 }
 
-func runDisconnect(args []string) int {
+func runDisconnect(args []string, defaultDaemonAddr string) int {
 	fs := flag.NewFlagSet("disconnect", flag.ContinueOnError)
-	daemonAddr := fs.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	daemonAddr := fs.String("daemon-addr", defaultDaemonAddr, "goat-clientd IPC address")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -209,9 +251,9 @@ func runDisconnect(args []string) int {
 	return 0
 }
 
-func runStatus(args []string) int {
+func runStatus(args []string, defaultDaemonAddr string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	daemonAddr := fs.String("daemon-addr", ipc.DefaultAddr(), "goat-clientd IPC address")
+	daemonAddr := fs.String("daemon-addr", defaultDaemonAddr, "goat-clientd IPC address")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

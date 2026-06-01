@@ -5,14 +5,19 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=notify
-NotifyAccess=main
+# Type=simple — the Go daemon does not call sd_notify(3) (it would
+# need a libsystemd binding we have not vendored). Type=notify caused
+# systemd to expect a READY=1 protocol message that never arrives,
+# eventually killing the unit with a fatal signal. simple is the
+# match for "daemon stays in the foreground; systemd treats it as
+# ready as soon as the process is up."
+Type=simple
 EnvironmentFile=-/etc/default/goat-client-headless
 ExecStart=/usr/bin/goat-clientd \
     --headless \
-    --bundle-dir=/var/lib/goat-client \
-    --ipc-socket=/run/goat-client/ipc.sock \
-    --log-file=/var/log/goat-client/goat-clientd.log \
+    --bundle=/var/lib/goat-client/bundle.cbor \
+    --socket=/run/goat-client/ipc.sock \
+    --trust-roots=/etc/goat-client/trust-roots.pem \
     --config=/etc/goat-client/config.toml \
     $GOAT_CLIENTD_FLAGS
 Restart=on-failure
@@ -54,7 +59,16 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
+# SystemCallFilter — the bare @system-service set rejects clone3 +
+# rseq + a handful of other syscalls modern Go runtimes (1.21+) emit
+# at startup, manifesting as Main PID code=dumped signal=SYS in
+# `systemctl status`. The widened set below mirrors what coreos /
+# systemd-upstream recommend for "ordinary network service written in
+# a modern memory-safe runtime." @resources covers Go's scheduler
+# tuning calls; @setuid is needed for the supplementary-group setup
+# the user-drop performs.
+SystemCallFilter=@system-service @resources @setuid
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
