@@ -578,7 +578,16 @@ jobs:
       - name: Three-mode install + systemctl check (ubuntu-22.04, mode=combined)
         run: |
           set -euo pipefail
-          sudo GOAT_MODE=combined apt install -y "./$deb"
+          # apt wipes the calling shell's environment before invoking
+          # dpkg + maintainer scripts (per `man apt`), so `GOAT_MODE=...
+          # apt install ...` does NOT reach the postinstall. The documented
+          # integration point — and the one the postinstall actually
+          # reads — is /etc/default/goat-client-headless. Stage GOAT_MODE
+          # there first; the postinstall sources it on a fresh install
+          # when the env-var path comes up empty.
+          sudo mkdir -p /etc/default
+          echo "GOAT_MODE=combined" | sudo tee /etc/default/goat-client-headless >/dev/null
+          sudo apt install -y "./$deb"
           # Daemon will fail-fast on missing trust roots; that's
           # expected — the verdict gate is "install + unit reaches
           # systemctl status without fatal config error", not
@@ -603,7 +612,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get remove -y goat-client-headless
-          sudo GOAT_MODE=netbird-only apt install -y "./$deb"
+          # Same /etc/default-staging trick — apt strips env before the
+          # postinstall runs. apt-get remove keeps the conffile alongside
+          # the daemon's /etc/goat-client/config.toml; rewrite both so
+          # the postinstall's install-path overwrite kicks in cleanly.
+          echo "GOAT_MODE=netbird-only" | sudo tee /etc/default/goat-client-headless >/dev/null
+          sudo apt install -y "./$deb"
           grep 'mode = "netbird-only"' /etc/goat-client/config.toml
       - name: Upload headless .deb artifact
         uses: actions/upload-artifact@v4
