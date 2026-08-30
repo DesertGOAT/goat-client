@@ -26,13 +26,13 @@ See [CHANGELOG.md](CHANGELOG.md) for full per-version release notes and [HANDOFF
 
 ## Install
 
-Pick the package for your OS from the [v0.2.0 release page](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.2.0). All assets are cosign-signed; see [Verifying release artifacts](#verifying-release-artifacts) below.
+Pick the package for your OS from the [v0.3.7 release page](https://github.com/dlf-dds/goat-client/releases/tag/goat-client-v0.3.7). All assets are cosign-signed; see [Verifying release artifacts](#verifying-release-artifacts) below. (The packaged .deb/.rpm/.dmg/.msi installers exist from the v0.3.x line onward; the v0.2.0 release carries platform tarballs and a headless .deb only, so the commands below 404 against it.)
 
 ### Debian / Ubuntu (.deb)
 
 ```bash
 curl -fL -o goat-client.deb \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client_0.2.0_amd64.deb
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.3.7/goat-client_0.3.7_amd64.deb
 sudo dpkg -i goat-client.deb
 sudo systemctl status goat-clientd        # daemon auto-starts
 ```
@@ -41,7 +41,7 @@ sudo systemctl status goat-clientd        # daemon auto-starts
 
 ```bash
 curl -fL -o goat-client.rpm \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-1.x86_64.rpm
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.3.7/goat-client-0.3.7-1.x86_64.rpm
 sudo dnf install ./goat-client.rpm
 sudo systemctl status goat-clientd        # daemon auto-starts
 ```
@@ -50,7 +50,7 @@ sudo systemctl status goat-clientd        # daemon auto-starts
 
 ```bash
 curl -fL -o goat-client.dmg \
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-arm64.dmg
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.3.7/goat-client-0.3.7-arm64.dmg
 hdiutil attach goat-client.dmg
 sudo installer -pkg "/Volumes/goat-client/goat-client.pkg" -target /
 hdiutil detach "/Volumes/goat-client"
@@ -63,12 +63,21 @@ Engineering builds ship unsigned. If Gatekeeper refuses to launch the GUI, clear
 
 ```powershell
 Invoke-WebRequest -OutFile goat-client.msi `
-  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0/goat-client-0.2.0-amd64.msi
+  https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.3.7/goat-client-0.3.7-amd64.msi
 msiexec /i goat-client.msi /qn
 Get-Service goat-clientd                  # daemon auto-starts
 ```
 
 Engineering builds ship without an Authenticode signature; SmartScreen will warn on first launch. Authenticode signing lands once the cert procurement clears.
+
+The Linux packages expect a systemd host ("daemon auto-starts" means a systemd
+unit); inside a plain container the daemon will not start.
+
+Verification status: unverified (prerequisites: a systemd host for the daemon,
+and an operator-issued `bundle.cbor` for first run). Confirmed on a clean
+Ubuntu 24.04 container 2026-08-30: the v0.3.7 amd64 .deb downloads and its
+cosign bundle verifies with the recipe below; the previously pinned v0.2.0
+URLs return 404 (that release predates the packaged installers).
 
 ## First run
 
@@ -112,17 +121,15 @@ Full subcommand reference, output fields, exit codes, and `--daemon-addr` overri
 Every release archive is cosign-signed (keyless / OIDC, GitHub Actions identity). Verify before installing:
 
 ```bash
-# Fetch the artifact, the signature, and the certificate.
-ASSET=goat-client_0.2.0_amd64.deb
-BASE=https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.2.0
+# Fetch the artifact and its cosign bundle (each asset ships one).
+ASSET=goat-client_0.3.7_amd64.deb
+BASE=https://github.com/dlf-dds/goat-client/releases/download/goat-client-v0.3.7
 curl -fLO "$BASE/$ASSET"
-curl -fLO "$BASE/$ASSET.sig"
-curl -fLO "$BASE/$ASSET.pem"
+curl -fLO "$BASE/$ASSET.cosign-bundle"
 
 # Verify (cosign 2.x).
 cosign verify-blob \
-  --certificate "$ASSET.pem" \
-  --signature   "$ASSET.sig" \
+  --bundle "$ASSET.cosign-bundle" \
   --certificate-identity-regexp 'https://github\.com/dlf-dds/goat-client/\.github/workflows/release\.yml@refs/tags/goat-client-v.*' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   "$ASSET"
