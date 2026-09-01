@@ -1,3 +1,5 @@
+> Cataloged in the [estate repo catalog](https://github.com/DesertGOAT/goat-hq/blob/main/docs/REPO-CATALOG.md).
+
 <p align="center">
   <img src="internal/ui/assets/goat-logo.svg" alt="goat" width="360">
 </p>
